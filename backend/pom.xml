@@ -107,7 +107,7 @@
         <dependency>
             <groupId>com.github.mwiede</groupId>
             <artifactId>jsch</artifactId>
-            <version>0.2.20</version>
+            <version>2.28.8</version>
         </dependency>
         <!-- Spark 引擎：Spark Thrift Server 走 HiveServer2 协议，平台侧用 Kyuubi 的
              shaded Hive JDBC 客户端（自包含，避免把整棵 Hive 依赖带进后端）。 -->
