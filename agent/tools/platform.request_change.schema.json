@@ -1,0 +1,102 @@
+{
+  "name": "platform.request_change",
+  "version": "1.0",
+  "description": "生成删除、改配置、权限、调度或表结构变更申请；只落申请单，不执行任何变更。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "DELETE_TASK",
+          "DELETE_DATASOURCE",
+          "UPDATE_CONFIG",
+          "UPDATE_PERMISSION",
+          "UPDATE_SCHEDULE",
+          "ALTER_TABLE"
+        ],
+        "description": "申请类型"
+      },
+      "targetType": {
+        "type": "string",
+        "description": "对象类型，如 TASK / DATASOURCE / WORKFLOW"
+      },
+      "targetId": {
+        "type": "integer",
+        "description": "对象 id（删除任务/数据源时必填且必须存在）"
+      },
+      "targetName": {
+        "type": "string",
+        "description": "对象名称，便于审批人识别"
+      },
+      "reason": {
+        "type": "string",
+        "description": "申请原因（必填）"
+      },
+      "impact": {
+        "type": "string",
+        "description": "影响范围"
+      },
+      "rollback": {
+        "type": "string",
+        "description": "回滚方式"
+      }
+    },
+    "required": [
+      "type",
+      "reason"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "明确对象与影响范围",
+      "已填写原因与回滚方式"
+    ],
+    "sideEffects": "insert platform.agent_change_request（PENDING_APPROVAL）",
+    "idempotent": false,
+    "permissions": [
+      "platform.write"
+    ],
+    "requiresApproval": true,
+    "errorCodes": [
+      "TARGET_NOT_FOUND",
+      "INVALID_CHANGE_TYPE",
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "type": "DELETE_TASK",
+        "targetType": "TASK",
+        "targetId": 289,
+        "targetName": "chat_kafka_mysql_1020041644",
+        "reason": "临时验证任务，已停止",
+        "impact": "不再出现在任务列表；历史运行记录保留",
+        "rollback": "可从申请单恢复任务配置"
+      },
+      "output": {
+        "ok": true,
+        "id": 1,
+        "status": "PENDING_APPROVAL"
+      }
+    }
+  ]
+}

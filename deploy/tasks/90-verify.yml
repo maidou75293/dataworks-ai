@@ -1,0 +1,74 @@
+---
+# 平台验收：两种形态共用，只通过 kubeconfig 查看，不依赖 SSH。
+- name: 节点
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Node
+  register: verify_nodes
+
+- name: 节点全部 Ready
+  ansible.builtin.assert:
+    that: >-
+      item.status.conditions
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+    fail_msg: "节点 {{ item.metadata.name }} 未 Ready"
+  loop: "{{ verify_nodes.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+# --check 下 uri 不执行，没有 status，整段跳过
+- name: 等待后端健康
+  ansible.builtin.uri:
+    url: "{{ platform_health_url }}"
+    status_code: 200
+    return_content: true
+  register: health
+  retries: 30
+  delay: 10
+  until: health.status == 200
+  when: not ansible_check_mode
+
+- name: 健康检查结果
+  ansible.builtin.debug:
+    msg: "{{ health.content }}"
+  when: not ansible_check_mode
+
+# 主机级服务 agent-service(8097)：链2对话入口（DL-F1 防再死）。
+# 空机器形态由 site.yml 的 agent-service play 拉起；接管已有 K8s 形态用
+# 开发机 `bash deploy.sh agent-service`。不想验收它，group_vars 设 requires_agent_service: false。
+- name: agent-service 健康检查
+  ansible.builtin.uri:
+    url: "http://{{ platform_health_host_effective }}:8097/api/health"
+    status_code: 200
+    return_content: true
+  register: agent_health
+  retries: 10
+  delay: 5
+  until: agent_health.status == 200 and (agent_health.json.ok | default(false))
+  when: not ansible_check_mode and (requires_agent_service | default(true))
+
+- name: agent-service 健康结果
+  ansible.builtin.assert:
+    that: agent_health.json.ok | default(false)
+    fail_msg: >-
+      agent-service(8097) 未就绪：systemctl status agent-service 查看，
+      或开发机 deploy/ 下 bash deploy.sh agent-service 拉起（见 deploy/README.md）
+  when: not ansible_check_mode and (requires_agent_service | default(true))
+
+- name: NodePort 列表
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Service
+    namespace: "{{ platform_namespace }}"
+  register: svcs
+
+- name: 打印 NodePort
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.metadata.name }}:
+      {{ item.spec.ports | map(attribute='nodePort') | select('defined') | join(',') }}
+  loop: "{{ svcs.resources | selectattr('spec.type', 'equalto', 'NodePort') | list }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"

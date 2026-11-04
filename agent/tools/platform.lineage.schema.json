@@ -1,0 +1,63 @@
+{
+  "name": "platform.lineage",
+  "version": "1.0",
+  "description": "查询表/字段血缘边；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "table": {
+        "type": "string"
+      },
+      "env": {
+        "type": "string",
+        "enum": [
+          "DEV",
+          "PROD"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "default": 50
+      }
+    },
+    "required": []
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "edges": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "已有血缘数据"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "platform.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "table": "sync_test"
+      },
+      "output": {
+        "count": 4
+      }
+    }
+  ]
+}

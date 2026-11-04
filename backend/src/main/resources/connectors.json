@@ -1,0 +1,1326 @@
+{
+  "version": "2.3.9",
+  "source": "apache/seatunnel tag 2.3.9, docs/en/connector-v2/source",
+  "sink": "apache/seatunnel tag 2.3.9, docs/en/connector-v2/sink",
+  "connectors": [
+    {
+      "name": "Activemq",
+      "displayName": "Activemq",
+      "source": false,
+      "sink": true,
+      "category": "MessageQueue",
+      "status": "READY"
+    },
+    {
+      "name": "AmazonDynamoDB",
+      "displayName": "AmazonDynamoDB",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "AmazonSqs",
+      "displayName": "AmazonSqs",
+      "source": true,
+      "sink": true,
+      "category": "MessageQueue",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Assert",
+      "displayName": "Assert",
+      "source": false,
+      "sink": true,
+      "category": "Utility",
+      "status": "READY"
+    },
+    {
+      "name": "Cassandra",
+      "displayName": "Cassandra",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY"
+    },
+    {
+      "name": "ClickHouse",
+      "displayName": "ClickHouse",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "host",
+          "label": "Host",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "required": true,
+          "placeholder": "8123"
+        },
+        {
+          "key": "database",
+          "label": "库",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "table",
+          "label": "表",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "host",
+          "label": "Host",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "required": true,
+          "placeholder": "8123"
+        },
+        {
+          "key": "database",
+          "label": "库",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "table",
+          "label": "表",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        }
+      ]
+    },
+    {
+      "name": "ClickhouseFile",
+      "displayName": "ClickhouseFile",
+      "source": false,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY"
+    },
+    {
+      "name": "Console",
+      "displayName": "Console",
+      "source": false,
+      "sink": true,
+      "category": "Utility",
+      "status": "READY"
+    },
+    {
+      "name": "CosFile",
+      "displayName": "CosFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Datahub",
+      "displayName": "Datahub",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "DB2",
+      "displayName": "DB2",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "note": "由 connector-jdbc + 方言驱动支持（JDBC 连接器）"
+    },
+    {
+      "name": "DingTalk",
+      "displayName": "DingTalk",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Doris",
+      "displayName": "Doris",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "fenodes",
+          "label": "FE 地址",
+          "type": "text",
+          "required": true,
+          "placeholder": "127.0.0.1:8030"
+        },
+        {
+          "key": "database",
+          "label": "库",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "table",
+          "label": "表",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "fenodes",
+          "label": "FE 地址",
+          "type": "text",
+          "required": true,
+          "placeholder": "127.0.0.1:8030"
+        },
+        {
+          "key": "database",
+          "label": "库",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "table",
+          "label": "表",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        }
+      ]
+    },
+    {
+      "name": "Druid",
+      "displayName": "Druid",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Easysearch",
+      "displayName": "Easysearch",
+      "source": true,
+      "sink": true,
+      "category": "SearchVector",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Elasticsearch",
+      "displayName": "Elasticsearch",
+      "source": true,
+      "sink": true,
+      "category": "SearchVector",
+      "status": "READY"
+    },
+    {
+      "name": "Email",
+      "displayName": "Email",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Enterprise-WeChat",
+      "displayName": "Enterprise-WeChat",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Fake",
+      "displayName": "Fake",
+      "source": true,
+      "sink": false,
+      "category": "Utility",
+      "status": "READY"
+    },
+    {
+      "name": "Feishu",
+      "displayName": "Feishu",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "FtpFile",
+      "displayName": "FtpFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "READY"
+    },
+    {
+      "name": "Github",
+      "displayName": "Github",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Gitlab",
+      "displayName": "Gitlab",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "GoogleFirestore",
+      "displayName": "GoogleFirestore",
+      "source": false,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "GoogleSheets",
+      "displayName": "GoogleSheets",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Greenplum",
+      "displayName": "Greenplum",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "note": "由 connector-jdbc + 方言驱动支持（JDBC 连接器）"
+    },
+    {
+      "name": "Hbase",
+      "displayName": "Hbase",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "HdfsFile",
+      "displayName": "HdfsFile",
+      "source": true,
+      "sink": true,
+      "category": "DataLake",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Hive",
+      "displayName": "Hive",
+      "source": true,
+      "sink": true,
+      "category": "DataLake",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "HiveJdbc",
+      "displayName": "HiveJdbc",
+      "source": true,
+      "sink": false,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Http",
+      "displayName": "Http",
+      "source": true,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "READY"
+    },
+    {
+      "name": "Hudi",
+      "displayName": "Hudi",
+      "source": false,
+      "sink": true,
+      "category": "DataLake",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Iceberg",
+      "displayName": "Iceberg",
+      "source": true,
+      "sink": true,
+      "category": "DataLake",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "InfluxDB",
+      "displayName": "InfluxDB",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY"
+    },
+    {
+      "name": "IoTDB",
+      "displayName": "IoTDB",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY"
+    },
+    {
+      "name": "Jdbc",
+      "displayName": "Jdbc",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "url",
+          "label": "JDBC URL",
+          "type": "text",
+          "required": true,
+          "placeholder": "jdbc:mysql://mysql:3306/db"
+        },
+        {
+          "key": "driver",
+          "label": "Driver",
+          "type": "text",
+          "required": false,
+          "placeholder": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "query",
+          "label": "查询 SQL",
+          "type": "textarea",
+          "required": true,
+          "placeholder": ""
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "url",
+          "label": "JDBC URL",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "driver",
+          "label": "Driver",
+          "type": "text",
+          "required": false,
+          "placeholder": "org.postgresql.Driver"
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "table",
+          "label": "目标表",
+          "type": "text",
+          "required": true,
+          "placeholder": "schema.table"
+        }
+      ]
+    },
+    {
+      "name": "Jira",
+      "displayName": "Jira",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Kafka",
+      "displayName": "Kafka",
+      "source": true,
+      "sink": true,
+      "category": "MessageQueue",
+      "status": "READY"
+    },
+    {
+      "name": "Kingbase",
+      "displayName": "Kingbase",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Klaviyo",
+      "displayName": "Klaviyo",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Kudu",
+      "displayName": "Kudu",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Lemlist",
+      "displayName": "Lemlist",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "LocalFile",
+      "displayName": "LocalFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "path",
+          "label": "路径",
+          "type": "text",
+          "required": true,
+          "placeholder": "/data/corpus"
+        },
+        {
+          "key": "fileFormat",
+          "label": "文件格式",
+          "type": "select",
+          "required": true,
+          "placeholder": "binary",
+          "options": [
+            "binary",
+            "json",
+            "csv",
+            "text",
+            "parquet",
+            "orc"
+          ]
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "path",
+          "label": "路径",
+          "type": "text",
+          "required": true,
+          "placeholder": "/data/corpus"
+        },
+        {
+          "key": "fileFormat",
+          "label": "文件格式",
+          "type": "select",
+          "required": true,
+          "placeholder": "binary",
+          "options": [
+            "binary",
+            "json",
+            "csv",
+            "text",
+            "parquet",
+            "orc"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Maxcompute",
+      "displayName": "Maxcompute",
+      "source": true,
+      "sink": true,
+      "category": "DataLake",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Milvus",
+      "displayName": "Milvus",
+      "source": true,
+      "sink": true,
+      "category": "SearchVector",
+      "status": "READY"
+    },
+    {
+      "name": "MongoDB",
+      "displayName": "MongoDB",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "uri",
+          "label": "MongoDB URI",
+          "type": "text",
+          "required": true,
+          "placeholder": "mongodb://mongo:27017"
+        },
+        {
+          "key": "database",
+          "label": "库",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "collection",
+          "label": "集合",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": false,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": false,
+          "placeholder": ""
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "uri",
+          "label": "MongoDB URI",
+          "type": "text",
+          "required": true,
+          "placeholder": "mongodb://mongo:27017"
+        },
+        {
+          "key": "database",
+          "label": "库",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "collection",
+          "label": "集合",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "user",
+          "label": "用户名",
+          "type": "text",
+          "required": false,
+          "placeholder": ""
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": false,
+          "placeholder": ""
+        }
+      ]
+    },
+    {
+      "name": "MongoDB-CDC",
+      "displayName": "MongoDB-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "READY"
+    },
+    {
+      "name": "MyHours",
+      "displayName": "MyHours",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "MySQL",
+      "displayName": "MySQL",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY"
+    },
+    {
+      "name": "MySQL-CDC",
+      "displayName": "MySQL-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "READY"
+    },
+    {
+      "name": "Neo4j",
+      "displayName": "Neo4j",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY"
+    },
+    {
+      "name": "Notion",
+      "displayName": "Notion",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "ObsFile",
+      "displayName": "ObsFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "OceanBase",
+      "displayName": "OceanBase",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "OneSignal",
+      "displayName": "OneSignal",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Opengauss-CDC",
+      "displayName": "Opengauss-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "OpenMldb",
+      "displayName": "OpenMldb",
+      "source": true,
+      "sink": false,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Oracle",
+      "displayName": "Oracle",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "note": "由 connector-jdbc + 方言驱动支持（JDBC 连接器）"
+    },
+    {
+      "name": "Oracle-CDC",
+      "displayName": "Oracle-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "OssFile",
+      "displayName": "OssFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "OssJindoFile",
+      "displayName": "OssJindoFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Paimon",
+      "displayName": "Paimon",
+      "source": true,
+      "sink": true,
+      "category": "DataLake",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Persistiq",
+      "displayName": "Persistiq",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Phoenix",
+      "displayName": "Phoenix",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "PostgreSQL",
+      "displayName": "PostgreSQL",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY"
+    },
+    {
+      "name": "PostgreSQL-CDC",
+      "displayName": "PostgreSQL-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "READY"
+    },
+    {
+      "name": "Prometheus",
+      "displayName": "Prometheus",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY"
+    },
+    {
+      "name": "Pulsar",
+      "displayName": "Pulsar",
+      "source": true,
+      "sink": true,
+      "category": "MessageQueue",
+      "status": "READY"
+    },
+    {
+      "name": "Qdrant",
+      "displayName": "Qdrant",
+      "source": true,
+      "sink": true,
+      "category": "SearchVector",
+      "status": "READY"
+    },
+    {
+      "name": "Rabbitmq",
+      "displayName": "Rabbitmq",
+      "source": true,
+      "sink": true,
+      "category": "MessageQueue",
+      "status": "READY"
+    },
+    {
+      "name": "Redis",
+      "displayName": "Redis",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "host",
+          "label": "Host",
+          "type": "text",
+          "required": true,
+          "placeholder": "redis"
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "required": true,
+          "placeholder": "6379"
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": false,
+          "placeholder": ""
+        },
+        {
+          "key": "keys",
+          "label": "Keys/Pattern",
+          "type": "text",
+          "required": true,
+          "placeholder": "corpus:*"
+        },
+        {
+          "key": "dataType",
+          "label": "数据类型",
+          "type": "select",
+          "required": true,
+          "placeholder": "string",
+          "options": [
+            "string",
+            "hash",
+            "list",
+            "set",
+            "zset"
+          ]
+        },
+        {
+          "key": "batchSize",
+          "label": "批量大小",
+          "type": "number",
+          "required": false,
+          "placeholder": "100"
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "host",
+          "label": "Host",
+          "type": "text",
+          "required": true,
+          "placeholder": "redis"
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "required": true,
+          "placeholder": "6379"
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "type": "password",
+          "required": false,
+          "placeholder": ""
+        },
+        {
+          "key": "keys",
+          "label": "Keys/Pattern",
+          "type": "text",
+          "required": true,
+          "placeholder": "corpus:*"
+        },
+        {
+          "key": "dataType",
+          "label": "数据类型",
+          "type": "select",
+          "required": true,
+          "placeholder": "string",
+          "options": [
+            "string",
+            "hash",
+            "list",
+            "set",
+            "zset"
+          ]
+        },
+        {
+          "key": "batchSize",
+          "label": "批量大小",
+          "type": "number",
+          "required": false,
+          "placeholder": "100"
+        }
+      ]
+    },
+    {
+      "name": "Redshift",
+      "displayName": "Redshift",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "RocketMQ",
+      "displayName": "RocketMQ",
+      "source": true,
+      "sink": true,
+      "category": "MessageQueue",
+      "status": "READY"
+    },
+    {
+      "name": "S3-Redshift",
+      "displayName": "S3-Redshift",
+      "source": false,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "S3File",
+      "displayName": "S3File",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "READY",
+      "sourceFields": [
+        {
+          "key": "endpoint",
+          "label": "Endpoint",
+          "type": "text",
+          "required": true,
+          "placeholder": "http://minio.dw-dev.svc.cluster.local:9000"
+        },
+        {
+          "key": "bucket",
+          "label": "Bucket",
+          "type": "text",
+          "required": true,
+          "placeholder": "dataworks-dev"
+        },
+        {
+          "key": "path",
+          "label": "Path",
+          "type": "text",
+          "required": true,
+          "placeholder": "/corpus/t1/dataset/IMAGE"
+        },
+        {
+          "key": "accessKey",
+          "label": "Access Key",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "secretKey",
+          "label": "Secret Key",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "fileFormat",
+          "label": "文件格式",
+          "type": "select",
+          "required": true,
+          "placeholder": "binary",
+          "options": [
+            "binary",
+            "json",
+            "csv",
+            "text",
+            "parquet",
+            "orc"
+          ]
+        },
+        {
+          "key": "pathStyle",
+          "label": "Path Style",
+          "type": "select",
+          "required": false,
+          "placeholder": "true",
+          "options": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "sinkFields": [
+        {
+          "key": "endpoint",
+          "label": "Endpoint",
+          "type": "text",
+          "required": true,
+          "placeholder": "http://minio.dw-dev.svc.cluster.local:9000"
+        },
+        {
+          "key": "bucket",
+          "label": "Bucket",
+          "type": "text",
+          "required": true,
+          "placeholder": "dataworks-dev"
+        },
+        {
+          "key": "path",
+          "label": "Path",
+          "type": "text",
+          "required": true,
+          "placeholder": "/corpus/t1/dataset/IMAGE"
+        },
+        {
+          "key": "accessKey",
+          "label": "Access Key",
+          "type": "text",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "secretKey",
+          "label": "Secret Key",
+          "type": "password",
+          "required": true,
+          "placeholder": ""
+        },
+        {
+          "key": "fileFormat",
+          "label": "文件格式",
+          "type": "select",
+          "required": true,
+          "placeholder": "binary",
+          "options": [
+            "binary",
+            "json",
+            "csv",
+            "text",
+            "parquet",
+            "orc"
+          ]
+        },
+        {
+          "key": "pathStyle",
+          "label": "Path Style",
+          "type": "select",
+          "required": false,
+          "placeholder": "true",
+          "options": [
+            "true",
+            "false"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SelectDB-Cloud",
+      "displayName": "SelectDB-Cloud",
+      "source": false,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Sentry",
+      "displayName": "Sentry",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "SftpFile",
+      "displayName": "SftpFile",
+      "source": true,
+      "sink": true,
+      "category": "FileObject",
+      "status": "READY"
+    },
+    {
+      "name": "Slack",
+      "displayName": "Slack",
+      "source": false,
+      "sink": true,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Sls",
+      "displayName": "Sls",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Snowflake",
+      "displayName": "Snowflake",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "Socket",
+      "displayName": "Socket",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY"
+    },
+    {
+      "name": "SqlServer",
+      "displayName": "SqlServer",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "note": "由 connector-jdbc + 方言驱动支持（JDBC 连接器）"
+    },
+    {
+      "name": "SqlServer-CDC",
+      "displayName": "SqlServer-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "StarRocks",
+      "displayName": "StarRocks",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY"
+    },
+    {
+      "name": "Tablestore",
+      "displayName": "Tablestore",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "NEEDS_JAR"
+    },
+    {
+      "name": "TDengine",
+      "displayName": "TDengine",
+      "source": true,
+      "sink": true,
+      "category": "NoSQL",
+      "status": "READY"
+    },
+    {
+      "name": "TiDB-CDC",
+      "displayName": "TiDB-CDC",
+      "source": true,
+      "sink": false,
+      "category": "CDC",
+      "status": "DEFERRED"
+    },
+    {
+      "name": "Typesense",
+      "displayName": "Typesense",
+      "source": true,
+      "sink": true,
+      "category": "SearchVector",
+      "status": "READY"
+    },
+    {
+      "name": "Vertica",
+      "displayName": "Vertica",
+      "source": true,
+      "sink": true,
+      "category": "Relational",
+      "status": "READY",
+      "note": "由 connector-jdbc + 方言驱动支持（JDBC 连接器）"
+    },
+    {
+      "name": "Web3j",
+      "displayName": "Web3j",
+      "source": true,
+      "sink": false,
+      "category": "SaaSHTTP",
+      "status": "DEFERRED"
+    }
+  ]
+}

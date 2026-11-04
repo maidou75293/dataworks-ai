@@ -1,0 +1,126 @@
+---
+# 主机级服务 agent-service(8097)：助手对话入口，Java 后端经节点 IP 代理（DL-F1，2026-10-30）。
+# 历史教训：该服务曾只在主机上 setsid nohup 裸跑、无 unit，机器重建后无人拉起，链2对话 503。
+# 本文件只做「幂等接线」：装 unit、缺 .env 时从 platform-keys secret 补建（存在绝不覆盖，
+# 运维手填的模型 Key 不会被冲掉）、模型三行「只补空不覆盖」收敛注入（真源=Secret，
+# BUG-AGENT-KEY-FIX-1）、enable --now、健康检查。开机自愈由 systemd 保证
+# （Restart=always + WantedBy=multi-user.target），防再死的检查在 90-verify.yml。
+# 代码与 venv 属一次性铺设：开发机 deploy/ 下 `bash deploy.sh agent-service`（源在仓库，不在部署包）。
+# 只在 site.yml（空机器形态，k3s_init=首节点）执行；接管已有 K8s 形态不 SSH 节点，用 deploy.sh。
+
+- name: 确认 agent-service 代码已铺设
+  ansible.builtin.stat:
+    path: /opt/dataworks-agent/agent-service/app.py
+  register: agent_app
+
+- name: 代码未铺设时给出明确指引
+  ansible.builtin.assert:
+    that: agent_app.stat.exists
+    fail_msg: >-
+      /opt/dataworks-agent/agent-service 不存在。先在开发机（有本仓库的机器）的 deploy/ 目录执行
+      bash deploy.sh agent-service 铺代码与 venv，再重跑本 playbook。
+
+- name: 安装 systemd unit
+  ansible.builtin.copy:
+    src: "{{ deploy_dir }}/systemd/agent-service.service"
+    dest: /etc/systemd/system/agent-service.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: systemd daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: 读取 PLATFORM_INTERNAL_TOKEN
+  ansible.builtin.command: >-
+    k3s kubectl -n {{ platform_namespace }} get secret platform-keys
+    -o jsonpath={.data.PLATFORM_INTERNAL_TOKEN}
+  register: pit_b64
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: 读取 AGENT_SERVICE_TOKEN
+  ansible.builtin.command: >-
+    k3s kubectl -n {{ platform_namespace }} get secret platform-keys
+    -o jsonpath={.data.AGENT_SERVICE_TOKEN}
+  register: ast_b64
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+# 模型 Key 真源=platform-keys/AGENT_MODEL_API_KEY（百炼 token-plan OpenAI 兼容口，
+# BUG-AGENT-KEY-FIX-1）。可能还没配：failed_when 放开，缺=空串，冒烟锁会红出来。
+- name: 读取 AGENT_MODEL_API_KEY（可缺省）
+  ansible.builtin.command: >-
+    k3s kubectl -n {{ platform_namespace }} get secret platform-keys
+    -o jsonpath={.data.AGENT_MODEL_API_KEY}
+  register: amk_b64
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  no_log: true
+
+- name: 缺 .env 时补建（600，ubuntu 属主；已存在不覆盖）
+  ansible.builtin.copy:
+    dest: /opt/dataworks-agent/agent-service/.env
+    owner: ubuntu
+    group: ubuntu
+    mode: "0600"
+    force: false
+    content: |
+      AGENT_MODEL_BASE_URL=https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+      AGENT_MODEL_NAME=qwen3.8-flash
+      # 模型 Key 真源=platform-keys/AGENT_MODEL_API_KEY（不落仓库）。为空时服务正常、chat 会失败
+      # （final=failed）；由本 play 从 Secret 收敛注入，只填空行、从不覆盖运维手填值。
+      AGENT_MODEL_API_KEY={{ amk_b64.stdout | default('') | trim | b64decode }}
+      PLATFORM_INTERNAL_TOKEN={{ pit_b64.stdout | trim | b64decode }}
+      AGENT_SERVICE_TOKEN={{ ast_b64.stdout | trim | b64decode }}
+      BACKEND_URL=http://{{ platform_health_host | default(ansible_host | default(inventory_hostname)) }}:30090
+  no_log: true
+
+# 收敛注入：既有 .env 的模型三行为空时补齐（replace 只在「行存在且值为空」时命中，
+# 手填的非空值绝不覆盖）。Secret 无 key 时端点/模型名照样归一，key 行留空由冒烟锁红出来。
+- name: 补齐 .env 为空的模型端点/模型名（只补空行）
+  ansible.builtin.replace:
+    path: /opt/dataworks-agent/agent-service/.env
+    regexp: '{{ item.re }}'
+    replace: '{{ item.val }}'
+  loop:
+    - re: '^AGENT_MODEL_BASE_URL=$'
+      val: 'AGENT_MODEL_BASE_URL=https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+    - re: '^AGENT_MODEL_NAME=$'
+      val: 'AGENT_MODEL_NAME=qwen3.8-flash'
+
+- name: 从 platform-keys 补齐 .env 空的模型 Key（只填空行；缺 key 跳过）
+  ansible.builtin.replace:
+    path: /opt/dataworks-agent/agent-service/.env
+    regexp: '^AGENT_MODEL_API_KEY=$'
+    replace: "AGENT_MODEL_API_KEY={{ amk_b64.stdout | default('') | trim | b64decode }}"
+  when: amk_b64.stdout | default('') | trim | length > 0
+  no_log: true
+  register: key_sync
+
+- name: 模型 Key 补齐后重启 agent-service
+  ansible.builtin.systemd:
+    name: agent-service
+    state: restarted
+  when: key_sync is changed
+
+- name: enable --now agent-service
+  ansible.builtin.systemd:
+    name: agent-service
+    enabled: true
+    state: started
+
+- name: 本机 8097 健康检查
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8097/api/health
+    status_code: 200
+    return_content: true
+  register: agent_health
+  retries: 10
+  delay: 3
+  until: agent_health.status == 200
+  when: not ansible_check_mode

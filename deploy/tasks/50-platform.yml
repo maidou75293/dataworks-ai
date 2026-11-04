@@ -1,0 +1,235 @@
+---
+# 平台对象：两种形态共用。只通过 kubeconfig 操作，不需要 SSH 到节点。
+- name: 密钥文件存在
+  no_log: true
+  ansible.builtin.stat:
+    path: "{{ platform_secrets_file }}"
+  register: secrets_file
+
+- name: 缺少密钥文件就停
+  no_log: true
+  ansible.builtin.fail:
+    msg: >-
+      缺少 {{ platform_secrets_file }}。
+      先 cp secrets/lab.example.yml secrets/{{ cluster_name }}.yml 并填满 23 项。
+  when: not secrets_file.stat.exists
+
+- name: 读取密钥
+  no_log: true
+  ansible.builtin.include_vars:
+    file: "{{ platform_secrets_file }}"
+    name: platform_secrets
+
+- name: 23 项密钥都必须非空
+  no_log: true
+  ansible.builtin.assert:
+    that: platform_secrets[item.split('.')[0]][item.split('.')[1]] | default('') | string | length > 0
+    fail_msg: "secrets/{{ cluster_name }}.yml 缺少 {{ item }}"
+  loop:
+    - postgres.password
+    - minio.password
+    - doris.password
+    - doris.metaReadOnlyUser
+    - doris.metaReadOnlyPassword
+    - keycloak.adminPassword
+    - grafana.adminPassword
+    - internal.platformSecretKey
+    - internal.platformInternalToken
+    - internal.mcpToken
+    - internal.keycloakClientSecret
+    - internal.minioPrometheusToken
+    - postgres.user
+    - postgres.database
+    - postgres.prefectDatabase
+    - postgres.gravitinoDatabase
+    - minio.user
+    - doris.user
+    - keycloak.adminUser
+    - grafana.adminUser
+    - mos.svcPassword
+    - internal.platformAdminPassword
+    - internal.agentServiceToken
+
+- name: 节点列表
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Node
+  register: platform_nodes
+
+# Doris BE 的 nodeSelector 靠这个标签；已有集群也在这里打，不需要 SSH
+- name: 给可调度节点打 Doris BE 标签
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: patched
+    kind: Node
+    name: "{{ item.metadata.name }}"
+    definition:
+      metadata:
+        labels:
+          "{{ doris_be_label_key }}": "true"
+  loop: "{{ platform_nodes.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  when:
+    - item.spec.unschedulable | default(false) == false
+    - (item.metadata.labels | default({}))[doris_be_label_key] | default('') != 'true'
+
+- name: 删除上一次的初始化 Job（保证每次都重新执行）
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: absent
+    kind: Job
+    name: db-init
+    namespace: "{{ platform_namespace }}"
+  tags: [apply]
+
+- name: 应用平台清单
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    apply: true
+    # ${DW_REGISTRY} 占位在应用时替换为 dw_registry 变量（REQ-OSS-QUICKSTART-1；
+    # 默认=私有仓库 30500，与历史硬编码等价，接管集群/公网镜像均可覆盖）。
+    # ${DW_NODE1/2/3}/${DW_NODE_CIDR}=节点 IP/网段占位（REQ-OSS-PUBSCRUB-1 仓内零
+    # 内网 IP 字面；派生值见 group_vars/all.yml）
+    definition: >-
+      {{ ((lookup('template', platform_manifest_dir ~ '/' ~ item)
+           if item.endswith('.j2')
+           else lookup('file', platform_manifest_dir ~ '/' ~ item))
+          | replace('storageClassName: local-path',
+                    'storageClassName: ' ~ platform_storage_class)
+          | replace('${DW_REGISTRY}', dw_registry)
+          | replace('${DW_NODE1}', dw_node1_ip | trim)
+          | replace('${DW_NODE2}', dw_node2_ip | trim)
+          | replace('${DW_NODE3}', dw_node3_ip | trim)
+          | replace('${DW_NODE_CIDR}', dw_node_cidr | trim))
+         | from_yaml_all | list }}
+  loop: "{{ platform_manifests }}"
+  loop_control:
+    label: "{{ item }}"
+  tags: [apply]
+
+- name: 等初始化 Job 完成
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Job
+    namespace: "{{ platform_namespace }}"
+  register: init_jobs
+  until: >-
+    (init_jobs.resources | length) > 0 and
+    (init_jobs.resources | selectattr('status.succeeded', 'defined') | list | length)
+      == (init_jobs.resources | length)
+  retries: 60
+  delay: 5
+  changed_when: false
+  tags: [wait]
+
+- name: 等 DaemonSet 就绪
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: DaemonSet
+    namespace: "{{ platform_namespace }}"
+  register: dss
+  until: >-
+    (dss.resources | length) > 0 and
+    (dss.resources | map(attribute='status.numberReady', default=0) | map('int') | list | sum)
+      == (dss.resources | map(attribute='status.desiredNumberScheduled', default=0) | map('int') | list | sum)
+  retries: 60
+  delay: 10
+  changed_when: false
+  tags: [wait]
+
+- name: 找 Doris FE Pod
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Pod
+    namespace: "{{ platform_namespace }}"
+    label_selectors:
+      - app=doris-fe
+  register: doris_fe_pods
+
+- name: 找 Doris BE Pod
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Pod
+    namespace: "{{ platform_namespace }}"
+    label_selectors:
+      - app=doris-be
+  register: doris_be_pods
+
+# 全新 Doris 的 FE 不认识任何 BE，必须显式 ADD BACKEND（重复添加会报错，忽略）
+- name: 注册 Doris BE
+  kubernetes.core.k8s_exec:
+    kubeconfig: "{{ kubeconfig_path }}"
+    namespace: "{{ platform_namespace }}"
+    pod: "{{ doris_fe_pods.resources[0].metadata.name }}"
+    container: fe
+    command: >-
+      mysql -h 127.0.0.1 -P 9030 -u root -e
+      "ALTER SYSTEM ADD BACKEND '{{ item.status.hostIP }}:9050';"
+  loop: "{{ doris_be_pods.resources }}"
+  loop_control:
+    label: "{{ item.status.hostIP }}"
+  failed_when: false
+  changed_when: false
+
+- name: 等 BE 全部 Alive
+  kubernetes.core.k8s_exec:
+    kubeconfig: "{{ kubeconfig_path }}"
+    namespace: "{{ platform_namespace }}"
+    pod: "{{ doris_fe_pods.resources[0].metadata.name }}"
+    container: fe
+    command: mysql -h 127.0.0.1 -P 9030 -u root -e "SHOW BACKENDS"
+  register: be_status
+  # SHOW BACKENDS 是制表符表格，Alive 列在中间，匹配 "	true	"
+  until: >-
+    (be_status.stdout_lines | length) > 1 and
+    (be_status.stdout_lines | select('search', '	true	') | list | length)
+      >= (doris_be_pods.resources | length)
+  retries: 30
+  delay: 5
+  changed_when: false
+
+# Doris root 只允许本机免密，业务账号只能在 FE 容器里建
+- name: 建 Doris 业务账号（幂等）
+  kubernetes.core.k8s_exec:
+    kubeconfig: "{{ kubeconfig_path }}"
+    namespace: "{{ platform_namespace }}"
+    pod: "{{ doris_fe_pods.resources[0].metadata.name }}"
+    container: fe
+    command: >-
+      mysql -h 127.0.0.1 -P 9030 -u root -e
+      "CREATE USER IF NOT EXISTS '{{ platform_secrets.doris.user }}'@'%'
+       IDENTIFIED BY '{{ platform_secrets.doris.password }}';
+       GRANT ALL ON *.* TO '{{ platform_secrets.doris.user }}'@'%';"
+  changed_when: false
+
+- name: 等 Deployment 全部可用
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Deployment
+    namespace: "{{ platform_namespace }}"
+  register: deps
+  until: >-
+    (deps.resources | length) > 0 and
+    (deps.resources | selectattr('status.availableReplicas', 'defined') | list | length)
+      == (deps.resources | length)
+  retries: 90
+  delay: 10
+  changed_when: false
+  tags: [wait]
+
+- name: 等 StatefulSet 全部就绪
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: StatefulSet
+    namespace: "{{ platform_namespace }}"
+  register: sss
+  until: >-
+    (sss.resources | length) > 0 and
+    (sss.resources | selectattr('status.readyReplicas', 'defined') | list | length)
+      == (sss.resources | length)
+  retries: 90
+  delay: 10
+  changed_when: false
+  tags: [wait]

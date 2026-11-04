@@ -1,0 +1,18 @@
+[Unit]
+Description=dataworks agent-service (SSE chat, tools, memory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/dataworks-agent/agent-service
+EnvironmentFile=/opt/dataworks-agent/agent-service/.env
+ExecStart=/opt/dataworks-agent/agent-service/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8097
+Restart=always
+RestartSec=3
+# 模型 Key 只在 EnvironmentFile 里，不写入 unit 文件
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

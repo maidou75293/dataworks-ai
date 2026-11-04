@@ -1,0 +1,627 @@
+# Minimal DEV observability: Prometheus + Grafana only.
+# No Operator, no Alertmanager, no extra exporters.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: dw-dev
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ["alertmanager.dw-dev.svc.cluster.local:9093"]
+
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+
+      # 平台自身：JVM / HTTP / Hikari
+      - job_name: dataworks-backend
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["dataworks-backend.dw-dev.svc.cluster.local:8080"]
+
+      # 节点 CPU / 内存 / 磁盘 / 网络
+      - job_name: node-exporter
+        static_configs:
+          # 节点 IP=占位 token，apply 时由 50-platform.yml 按 inventory 派生替换（REQ-OSS-PUBSCRUB-1）
+          - targets: ["${DW_NODE1}:9100"]
+            labels: {node: dw-k8s-1}
+          - targets: ["${DW_NODE2}:9100"]
+            labels: {node: dw-k8s-2}
+          - targets: ["${DW_NODE3}:9100"]
+            labels: {node: dw-k8s-3}
+
+      # 后端从 K8s API 生成的 Pod / Deployment 状态指标（替代 kube-state-metrics）
+      - job_name: dataworks-k8s
+        metrics_path: /api/internal/metrics/k8s
+        authorization:
+          type: Bearer
+          credentials_file: /etc/prometheus-token/internal-token
+        static_configs:
+          - targets: ["dataworks-backend.dw-dev.svc.cluster.local:8080"]
+
+      # kubelet 自带的容器指标
+      - job_name: kubelet-cadvisor
+        scheme: https
+        metrics_path: /metrics/cadvisor
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          insecure_skip_verify: true
+        static_configs:
+          - targets: ["${DW_NODE1}:10250"]
+            labels: {node: dw-k8s-1}
+          - targets: ["${DW_NODE2}:10250"]
+            labels: {node: dw-k8s-2}
+          - targets: ["${DW_NODE3}:10250"]
+            labels: {node: dw-k8s-3}
+
+      # API Server 指标（请求量、延迟、错误）
+      - job_name: apiserver
+        scheme: https
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          insecure_skip_verify: true
+        static_configs:
+          - targets: ["${DW_NODE1}:6443"]
+
+      # Doris FE exposes Prometheus metrics on the FE http_port.
+      - job_name: doris-fe
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["${DW_NODE1}:8030"]
+
+      # Doris BE exposes Prometheus metrics on the BE webservice_port.
+      - job_name: doris-be
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "${DW_NODE1}:8040"
+              - "${DW_NODE2}:8040"
+              - "${DW_NODE3}:8040"
+
+      # SeaTunnel Zeta 引擎：JVM、cluster_info、node_count、node_state，
+      # 运行中的作业还会暴露 TableSource/TableSink 计数与 QPS。
+      - job_name: seatunnel
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - "seatunnel-0.seatunnel-headless.dw-dev.svc.cluster.local:8080"
+              - "seatunnel-1.seatunnel-headless.dw-dev.svc.cluster.local:8080"
+              - "seatunnel-2.seatunnel-headless.dw-dev.svc.cluster.local:8080"
+            labels: {cluster: seatunnel}
+
+      # MinIO 集群指标（bucket、请求、容量、节点健康）
+      - job_name: minio
+        metrics_path: /minio/v2/metrics/cluster
+        bearer_token_file: /etc/prometheus-token/minio-token
+        static_configs:
+          - targets: ["minio.dw-dev.svc.cluster.local:9000"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource
+  namespace: dw-dev
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: dw-dev
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: dataworks
+        orgId: 1
+        folder: DataWorks
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-doris
+  namespace: dw-dev
+data:
+  doris-overview.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 0,
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Scrape Targets Up",
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum(up)", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "stat",
+          "title": "Doris Components Up",
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum(up{job=~\"doris-.*\"})", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "stat",
+          "title": "FE QPS",
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "doris_fe_qps", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "stat",
+          "title": "BE Query Contexts",
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum(doris_be_query_ctx_cnt)", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "FE Query Rate",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "rate(doris_fe_query_total[5m])", "legendFormat": "{{user}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "BE Allocated Memory",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum by (instance) (doris_be_memory_allocated_bytes)", "legendFormat": "{{instance}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "BE CPU (user, rate)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum by (instance) (rate(doris_be_cpu{mode=\"user\"}[5m]))", "legendFormat": "{{instance}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "Scrape Up by Job",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "up", "legendFormat": "{{job}} {{instance}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1}, "overrides": []}
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["dataworks", "doris"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "DataWorks DEV Overview",
+      "uid": "dataworks-dev",
+      "version": 1
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: dw-dev
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  # Single replica + a nearly full namespace quota: a rolling update cannot
+  # create the new pod before the old one is gone, so it deadlocks on
+  # `FailedCreate: exceeded quota`. Recreate removes the old pod first.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: ${DW_REGISTRY}/library/obs:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/prometheus/prometheus
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=7d
+            - --web.listen-address=0.0.0.0:9090
+          ports:
+            - name: http
+              containerPort: 9090
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+            - name: internal-token
+              mountPath: /etc/prometheus-token/internal-token
+              subPath: internal-token
+              readOnly: true
+            - name: minio-token
+              mountPath: /etc/prometheus-token/minio-token
+              subPath: token
+              readOnly: true
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: rules
+          configMap:
+            name: prometheus-rules
+        - name: internal-token
+          secret:
+            secretName: platform-keys
+            items:
+              - key: PLATFORM_INTERNAL_TOKEN
+                path: internal-token
+        - name: minio-token
+          secret:
+            secretName: minio-prometheus-token
+            items:
+              - key: token
+                path: token
+        - name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: dw-dev
+  labels:
+    app: prometheus
+spec:
+  type: NodePort
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      nodePort: 30091
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: dw-dev
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsUser: 0
+      containers:
+        - name: grafana
+          image: ${DW_REGISTRY}/library/obs:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/share/grafana/bin/grafana
+            - server
+            - --homepath=/usr/share/grafana
+            - --config=/usr/share/grafana/conf/defaults.ini
+          env:
+            - name: GF_PATHS_DATA
+              value: /var/lib/grafana
+            - name: GF_PATHS_LOGS
+              value: /var/log/grafana
+            - name: GF_PATHS_PLUGINS
+              value: /var/lib/grafana/plugins
+            - name: GF_PATHS_PROVISIONING
+              value: /etc/grafana/provisioning
+            - name: GF_SERVER_HTTP_PORT
+              value: "3000"
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-auth
+                  key: admin-password
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: datasource
+              mountPath: /etc/grafana/provisioning/datasources/datasource.yaml
+              subPath: datasource.yaml
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+            - name: dashboard-doris
+              mountPath: /etc/grafana/dashboards/doris-overview.json
+              subPath: doris-overview.json
+            - name: dashboard-k8s
+              mountPath: /etc/grafana/dashboards/k8s-overview.json
+              subPath: k8s-overview.json
+            - name: dashboard-seatunnel
+              mountPath: /etc/grafana/dashboards/seatunnel-overview.json
+              subPath: seatunnel-overview.json
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: datasource
+          configMap:
+            name: grafana-datasource
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboard-doris
+          configMap:
+            name: grafana-dashboard-doris
+        - name: dashboard-k8s
+          configMap:
+            name: grafana-dashboard-k8s
+        - name: dashboard-seatunnel
+          configMap:
+            name: grafana-dashboard-seatunnel
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: dw-dev
+  labels:
+    app: grafana
+spec:
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      nodePort: 30092
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-k8s
+  namespace: dw-dev
+data:
+  k8s-overview.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 0,
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Nodes Ready",
+          "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum(dw_node_ready)", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "stat",
+          "title": "Pods Running",
+          "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "count(dw_pod_phase{phase=\"Running\"} == 1)", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "stat",
+          "title": "Abnormal Pods",
+          "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "count((dw_pod_phase{phase=~\"Pending|Failed|Unknown\"} == 1))", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+        {
+          "type": "stat",
+          "title": "Scrape Targets Down",
+          "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum(up == 0)", "refId": "A"}],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "Node CPU %",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "100 - (avg by (node) (rate(node_cpu_seconds_total{job=\"node-exporter\",mode=\"idle\"}[5m])) * 100)", "legendFormat": "{{node}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "Node Memory %",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node-exporter\"} / node_memory_MemTotal_bytes{job=\"node-exporter\"})", "legendFormat": "{{node}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "Node Disk % (/)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node-exporter\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{job=\"node-exporter\",mountpoint=\"/\",fstype!~\"tmpfs|overlay|squashfs\"})", "legendFormat": "{{node}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "Pods by Phase",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum by (phase) (dw_pod_phase)", "legendFormat": "{{phase}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "Top Pod Restarts",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "topk(10, dw_pod_restarts)", "legendFormat": "{{pod}}", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+        },
+        {
+          "type": "timeseries",
+          "title": "API Server Request Rate",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"expr": "sum(rate(apiserver_request_total[5m]))", "legendFormat": "req/s", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["dataworks", "k8s"],
+      "templating": {"list": []},
+      "time": {"from": "now-3h", "to": "now"},
+      "title": "DataWorks K8s Overview",
+      "uid": "dataworks-k8s",
+      "version": 1
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-seatunnel
+  namespace: dw-dev
+data:
+  seatunnel-overview.json: |
+    {
+      "title": "SeaTunnel 引擎",
+      "uid": "seatunnel-overview",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {
+          "type": "stat",
+          "title": "在线节点数 (node_count)",
+          "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+          "targets": [{"expr": "min(node_count{job=\"seatunnel\"})", "refId": "A"}]
+        },
+        {
+          "type": "stat",
+          "title": "抓取正常节点 (up)",
+          "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+          "targets": [{"expr": "sum(up{job=\"seatunnel\"})", "refId": "A"}]
+        },
+        {
+          "type": "timeseries",
+          "title": "JVM Heap 使用量",
+          "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+          "targets": [
+            {"expr": "jvm_memory_bytes_used{job=\"seatunnel\",area=\"heap\"}", "legendFormat": "{{instance}}", "refId": "A"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "作业读取 / 写入行数",
+          "gridPos": {"x": 0, "y": 8, "w": 24, "h": 8},
+          "targets": [
+            {"expr": "sum(TableSourceReceivedCount{job=\"seatunnel\"}) by (job_name)", "legendFormat": "read {{job_name}}", "refId": "A"},
+            {"expr": "sum(TableSinkWriteCount{job=\"seatunnel\"}) by (job_name)", "legendFormat": "write {{job_name}}", "refId": "B"}
+          ]
+        }
+      ]
+    }

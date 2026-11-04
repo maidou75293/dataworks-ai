@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-headless
+  namespace: dw-dev
+  labels:
+    app: minio
+spec:
+  clusterIP: None
+  selector:
+    app: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: dw-dev
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+# 多模态预签名地址要给浏览器用：集群内 DNS 在用户机器上解析不了，
+# 因此单独暴露一个 NodePort（30900），后端用 ASSET_S3_PUBLIC_ENDPOINT 指过来。
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-external
+  namespace: dw-dev
+  labels:
+    app: minio
+spec:
+  type: NodePort
+  selector:
+    app: minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: 9000
+      nodePort: 30900
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: dw-dev
+  labels:
+    app: minio
+spec:
+  serviceName: minio-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: ${DW_REGISTRY}/library/minio:dev2
+          imagePullPolicy: IfNotPresent
+          env:
+          # DEV 内网集群：指标端点免 token 抓取（曾因 token 失效 403，
+          # 导致监控页 MinIO 卡片在 Pod 全部正常时仍显示「降级」）
+          - name: MINIO_PROMETHEUS_AUTH_TYPE
+            value: public
+        command:
+            - /usr/local/bin/minio
+            - server
+            - http://minio-0.minio-headless.dw-dev.svc.cluster.local:9000/data/minio
+            - http://minio-1.minio-headless.dw-dev.svc.cluster.local:9000/data/minio
+            - http://minio-2.minio-headless.dw-dev.svc.cluster.local:9000/data/minio
+            - --console-address
+            - :9001
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Gi

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-datasource-inventory",
+  "module": "datasource",
+  "title": "查数据源家底",
+  "goal": "回答“项目里有哪些/某类数据源”，给出 id、名称、类型、连接地址，绝不输出凭据。",
+  "source": "docs/数据集成-验收汇总-20261019.md",
+  "steps": [
+    {"n": 1, "action": "按类型或名称关键字列出数据源", "tool": "list_datasources",
+     "expect": "返回 count 与 datasources 数组（id/name/type/jdbcUrl）"},
+    {"n": 2, "action": "需要确认某库下对象时按库层级补充", "tool": "catalog.list_schemas",
+     "expect": "返回 schema 清单"},
+    {"n": 3, "action": "汇总口径：类型分布、缺失项、重名用 id 区分", "tool": "list_datasources",
+     "expect": "结论可被前两步返回行复核"}
+  ],
+  "failWhen": [
+    {"if": "401 内部凭证无效", "then": "如实说后端内部凭证未配置，不编造数据源清单"},
+    {"if": "count=0", "then": "说当前项目内没有符合过滤的数据源，建议换关键字或确认项目上下文"},
+    {"if": "用户索要密码或完整连接配置", "then": "只报连接地址与是否存在，凭据一律不输出"}
+  ]
+}

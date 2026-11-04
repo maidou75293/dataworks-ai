@@ -1,0 +1,7 @@
+# 复制成 vault.yml，然后用 ansible-vault 加密：
+#   cp vault.example.yml vault.yml
+#   ansible-vault encrypt vault.yml
+#
+# 密码模式（inventory/lab-password.yml）会引用这个变量。
+# 密钥模式不需要这个文件。
+vault_ssh_password: ""

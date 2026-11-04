@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-lineage-node-detail",
+  "module": "lineage",
+  "title": "血缘节点详情与图检索",
+  "goal": "从关键字定位血缘图节点，再取节点详情与相邻边，回答“这张表连到谁”。",
+  "source": "docs/数据血缘.md",
+  "steps": [
+    {"n": 1, "action": "按关键字在血缘图里检索候选节点", "tool": "graph.search",
+     "expect": "候选节点 id 列表"},
+    {"n": 2, "action": "取指定节点的属性与邻边", "tool": "graph.get_node",
+     "expect": "节点详情 + 上下游边"},
+    {"n": 3, "action": "需要表结构佐证时查表元数据", "tool": "catalog.describe_table",
+     "expect": "字段清单与节点一致"}
+  ],
+  "failWhen": [
+    {"if": "同名节点跨库/跨环境多个", "then": "用库名+环境让用户确认唯一目标，不选第一个"},
+    {"if": "检索不到节点", "then": "说明图中无此节点，转表名血缘口径或确认表已纳管"}
+  ]
+}

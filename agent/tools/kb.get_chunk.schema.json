@@ -1,0 +1,72 @@
+{
+  "name": "kb.get_chunk",
+  "version": "1.0",
+  "description": "按 chunk_id 取回原始片段与元数据；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "chunk_id": {
+        "type": "integer"
+      },
+      "version": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "chunk_id"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "chunk_id": {
+        "type": "integer"
+      },
+      "doc_id": {
+        "type": "integer"
+      },
+      "title": {
+        "type": "string"
+      },
+      "content": {
+        "type": "string"
+      },
+      "acl_tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "user.authorized"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "kb.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "CHUNK_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "chunk_id": 42
+      },
+      "output": {
+        "chunk_id": 42,
+        "doc_id": 1001,
+        "title": "报销制度",
+        "content": "...",
+        "acl_tags": [
+          "finance"
+        ]
+      }
+    }
+  ]
+}

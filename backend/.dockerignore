@@ -1,0 +1,5 @@
+# compose 镜像构建上下文瘦身（REQ-OSS-QUICKSTART-1）：target/ 与本机前端产物不进镜像层，
+# 容器内从源码重新构建（compose 形态前端由 web 容器提供，jar 不带 static）
+target
+src/main/resources/static
+*.log

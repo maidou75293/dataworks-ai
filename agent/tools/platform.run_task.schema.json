@@ -1,0 +1,70 @@
+{
+  "name": "platform.run_task",
+  "version": "1.0",
+  "description": "运行指定同步任务。必须先向用户说明影响并 confirm=true。运行参数以任务 sourceConfig.params 的声明为准：先读任务详情取 name/type/required/default，再按类型传值；未声明或缺必填会被拒绝。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "confirm": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "params": {
+        "type": "object",
+        "description": "运行时参数，键必须先在任务 sourceConfig.params 中声明；按声明类型传值（int/long/number/bool/date/datetime/ident），缺必填项应询问用户而不是猜。格式与错误见 docs/数据集成-运行参数声明.md"
+      }
+    },
+    "required": [
+      "confirm",
+      "id"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "jobName": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "任务已存在",
+      "用户已确认"
+    ],
+    "sideEffects": "提交 k8s Job 并写目标端",
+    "idempotent": false,
+    "permissions": [
+      "platform.write"
+    ],
+    "requiresConfirmation": true,
+    "errorCodes": [
+      "CONFIRM_REQUIRED",
+      "INTERNAL_TOKEN_INVALID",
+      "TASK_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "id": 300,
+        "confirm": true
+      },
+      "output": {
+        "ok": true,
+        "jobName": "sync-kafka-to-mysql-..."
+      }
+    }
+  ]
+}

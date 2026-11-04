@@ -1,0 +1,109 @@
+---
+# 节点基线：重复执行无副作用。
+- name: 内核模块开机加载
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      br_netfilter
+      overlay
+    mode: "0644"
+
+- name: 立即加载内核模块
+  ansible.builtin.command: modprobe {{ item }}
+  loop: [br_netfilter, overlay]
+  changed_when: false
+
+- name: 内核参数
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-k8s.conf
+    mode: "0644"
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+      fs.inotify.max_user_instances = 8192
+      vm.max_map_count = 2000000
+  register: sysctl_conf
+
+- name: 应用内核参数
+  ansible.builtin.command: sysctl --system
+  when: sysctl_conf.changed
+  changed_when: true
+
+- name: 关闭 swap
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: 注释 fstab 里的 swap
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+  when: ansible_swaptotal_mb | int > 0
+
+- name: k3s 配置目录
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    mode: "0755"
+
+- name: 镜像加速
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/registries.yaml
+    mode: "0644"
+    content: "{{ {'mirrors': {'docker.io': {'endpoint': (['http://' ~ registry_host ~ ':30500'] + k3s_docker_mirrors)}}} | to_nice_yaml(indent=2) }}"
+
+# 私有仓库/缓存是 HTTP，containerd 默认按 HTTPS 拉会失败
+- name: 镜像中心 HTTP 配置目录
+  ansible.builtin.file:
+    path: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ hostvars[groups['k3s_init'][0]].k3s_node_ip }}:{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [30500]
+
+- name: 镜像中心 hosts.toml
+  ansible.builtin.copy:
+    dest: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ hostvars[groups['k3s_init'][0]].k3s_node_ip }}:{{ item }}/hosts.toml"
+    mode: "0644"
+    content: |
+      server = "http://{{ hostvars[groups['k3s_init'][0]].k3s_node_ip }}:{{ item }}"
+  loop: [30500]
+
+- name: 查 ufw 状态
+  ansible.builtin.command: ufw status
+  register: ufw_status
+  changed_when: false
+  failed_when: false
+  when: ansible_os_family == 'Debian'
+
+- name: 放行 k3s 端口（ufw 已启用时）
+  ansible.builtin.command: ufw allow {{ item }}
+  loop:
+    - 6443/tcp
+    - 10250/tcp
+    - 8472/udp
+    - "{{ k3s_node_port_range }}/tcp"
+    - "{{ k3s_node_port_range }}/udp"
+  when:
+    - ansible_os_family == 'Debian'
+    - "'Status: active' in (ufw_status.stdout | default(''))"
+  changed_when: false
+
+- name: 放行 k3s 端口（firewalld）
+  ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}
+  loop:
+    - 6443/tcp
+    - 10250/tcp
+    - 8472/udp
+    - "{{ k3s_node_port_range }}/tcp"
+    - "{{ k3s_node_port_range }}/udp"
+  when: ansible_os_family == 'RedHat'
+  changed_when: false
+  failed_when: false
+
+- name: 重载 firewalld
+  ansible.builtin.command: firewall-cmd --reload
+  when: ansible_os_family == 'RedHat'
+  changed_when: false
+  failed_when: false

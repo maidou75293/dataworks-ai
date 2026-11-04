@@ -1,0 +1,50 @@
+---
+# 接管已有 K8s：只做只读检查，不碰节点系统。
+- name: kubeconfig 存在
+  ansible.builtin.stat:
+    path: "{{ kubeconfig_path }}"
+  register: kc
+
+- name: 没有 kubeconfig 就停
+  ansible.builtin.fail:
+    msg: >-
+      缺少 {{ kubeconfig_path }}。
+      把目标集群的 kubeconfig 放到这个路径（600），或者在 inventory 里改 kubeconfig_path。
+  when: not kc.stat.exists
+
+- name: 能连上集群（列出节点）
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Node
+  register: existing_nodes
+
+- name: 至少有一个节点
+  ansible.builtin.assert:
+    that: existing_nodes.resources | length > 0
+    fail_msg: "连上了但拿不到节点，检查 kubeconfig 权限"
+
+- name: 每个节点都 Ready
+  ansible.builtin.assert:
+    that: >-
+      item.status.conditions
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+    fail_msg: "节点 {{ item.metadata.name }} 未 Ready"
+  loop: "{{ existing_nodes.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+- name: StorageClass 列表
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: StorageClass
+  register: scs
+
+- name: 必须能找到 {{ platform_storage_class }}
+  ansible.builtin.assert:
+    that: scs.resources | selectattr('metadata.name', 'equalto', platform_storage_class) | list | length > 0
+    fail_msg: >-
+      集群里没有 StorageClass「{{ platform_storage_class }}」。
+      在 inventory/group_vars/all.yml 里把 platform_storage_class 改成集群实际的名字。
+    success_msg: "StorageClass: {{ platform_storage_class }}"

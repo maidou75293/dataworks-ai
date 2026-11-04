@@ -1,0 +1,5 @@
+# compose 镜像构建上下文瘦身（REQ-OSS-QUICKSTART-1）：本机 node_modules/dist 不进镜像层
+node_modules
+dist
+.vite
+*.log

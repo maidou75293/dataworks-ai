@@ -1,0 +1,137 @@
+# RocketMQ 5.3.1 单 namesrv + 单 broker，用于源/汇端到端验证。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-rocketmq
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: broker-conf
+  namespace: dataworks-test-rocketmq
+data:
+  broker.conf: |
+    brokerClusterName=DefaultCluster
+    brokerName=broker-a
+    brokerId=0
+    deleteWhen=04
+    fileReservedTime=48
+    brokerRole=ASYNC_MASTER
+    flushDiskType=ASYNC_FLUSH
+    autoCreateTopicEnable=true
+    autoCreateSubscriptionGroup=true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rocketmq-namesrv
+  namespace: dataworks-test-rocketmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rocketmq-namesrv
+  template:
+    metadata:
+      labels:
+        app: rocketmq-namesrv
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-2
+      containers:
+        - name: namesrv
+          image: docker.io/apache/rocketmq:5.3.1
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "/home/rocketmq/rocketmq-5.3.1/bin/mqnamesrv"]
+          env:
+            - name: JAVA_OPT_EXT
+              value: "-Xms256m -Xmx256m -Xmn128m"
+          ports:
+            - containerPort: 9876
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-namesrv
+  namespace: dataworks-test-rocketmq
+spec:
+  selector:
+    app: rocketmq-namesrv
+  ports:
+    - name: namesrv
+      port: 9876
+      targetPort: 9876
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rocketmq-broker
+  namespace: dataworks-test-rocketmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rocketmq-broker
+  template:
+    metadata:
+      labels:
+        app: rocketmq-broker
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-2
+      containers:
+        - name: broker
+          image: docker.io/apache/rocketmq:5.3.1
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "/home/rocketmq/rocketmq-5.3.1/bin/mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/conf/broker.conf"]
+          env:
+            - name: JAVA_OPT_EXT
+              value: "-Xms512m -Xmx512m -Xmn256m"
+          ports:
+            - containerPort: 10911
+            - containerPort: 10909
+            - containerPort: 10912
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: conf
+              mountPath: /home/rocketmq/conf
+            - name: store
+              mountPath: /home/rocketmq/store
+      volumes:
+        - name: conf
+          configMap:
+            name: broker-conf
+        - name: store
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker
+  namespace: dataworks-test-rocketmq
+spec:
+  selector:
+    app: rocketmq-broker
+  ports:
+    - name: broker
+      port: 10911
+      targetPort: 10911
+    - name: vip
+      port: 10909
+      targetPort: 10909
+    - name: ha
+      port: 10912
+      targetPort: 10912

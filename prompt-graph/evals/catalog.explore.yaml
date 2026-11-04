@@ -1,0 +1,30 @@
+node: catalog.explore
+version: 1
+cases:
+  - name: 列出 catalog
+    input: {}
+    expect:
+      tool: catalog.list
+      catalogs_include: ["doris_dev", "minio_fileset"]
+  - name: 逐级下钻拿到表
+    input:
+      catalog: doris_dev
+      schema: kb_dev
+    expect:
+      tools: [catalog.list_schemas, catalog.list_tables]
+      tables_include: ["kb_chunk"]
+  - name: 表结构
+    input:
+      catalog: doris_dev
+      schema: kb_dev
+      table: kb_chunk
+    expect:
+      tool: catalog.describe_table
+      column_count: 10
+  - name: 未知对象不臆造
+    input:
+      catalog: doris_dev
+      schema: kb_dev
+      table: does_not_exist
+    expect:
+      error_code: CATALOG_OBJECT_NOT_FOUND

@@ -1,0 +1,7 @@
+# DEV overrides, appended after the default fe.conf
+LOG_DIR = /opt/doris/fe/log
+meta_dir = /opt/doris/fe/doris-meta
+http_port = 8030
+rpc_port = 9020
+query_port = 9030
+edit_log_port = 9010

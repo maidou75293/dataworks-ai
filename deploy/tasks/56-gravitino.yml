@@ -1,0 +1,86 @@
+---
+# Gravitino 元数据层：metalake + Doris catalog，幂等。
+#
+# 不建的话「数据地图」会 502：CATALOG_OBJECT_NOT_FOUND。
+# 与 scripts/ops/gravitino-init.sh 等价；脚本用于已部署集群的手工补，
+# 这里保证全新安装不再漏。
+#
+# 元数据通道使用只读账号 dw_meta_ro（SELECT_PRIV），不再复用业务账号
+# dataworks。Doris 侧的账号由 deploy/k8s/20-doris-meta-ro.yaml +
+# scripts/ops/doris-meta-ro.sh 维护；跑本任务前该账号必须已存在。
+- name: 读密钥
+  ansible.builtin.include_vars:
+    file: "{{ platform_secrets_file }}"
+    name: platform_secrets
+
+- name: 取元数据只读账号（用户名缺省 dw_meta_ro，密码必须显式配置）
+  ansible.builtin.set_fact:
+    gravitino_doris_meta_user: >-
+      {{ platform_secrets.doris.metaReadOnlyUser | default('dw_meta_ro', true) }}
+    gravitino_doris_meta_password: "{{ platform_secrets.doris.metaReadOnlyPassword }}"
+  no_log: true
+
+- name: 等 Gravitino 就绪并读 metalake
+  ansible.builtin.uri:
+    url: "{{ gravitino_url }}/api/metalakes"
+    status_code: [200]
+  register: gravitino_metalakes
+  retries: 30
+  delay: 5
+  until: gravitino_metalakes.status == 200
+
+- name: 建 metalake
+  ansible.builtin.uri:
+    url: "{{ gravitino_url }}/api/metalakes"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ gravitino_metalake }}"
+      comment: DataWorks platform metadata
+      properties: {}
+    status_code: [200, 409]
+  when: gravitino_metalake not in (gravitino_metalakes.json.metalakes | map(attribute='name') | list)
+
+- name: 查 catalog
+  ansible.builtin.uri:
+    url: "{{ gravitino_url }}/api/metalakes/{{ gravitino_metalake }}/catalogs"
+    status_code: [200]
+  register: gravitino_catalogs
+
+- name: 建 Doris catalog（元数据只读账号）
+  ansible.builtin.uri:
+    url: "{{ gravitino_url }}/api/metalakes/{{ gravitino_metalake }}/catalogs"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ gravitino_catalog }}"
+      type: relational
+      provider: jdbc-doris
+      comment: Doris warehouse
+      properties:
+        jdbc-url: "jdbc:mysql://{{ gravitino_doris_host }}:{{ gravitino_doris_port }}"
+        jdbc-user: "{{ gravitino_doris_meta_user }}"
+        jdbc-password: "{{ gravitino_doris_meta_password }}"
+        jdbc-driver: com.mysql.cj.jdbc.Driver
+    status_code: [200, 409]
+  when: gravitino_catalog not in (gravitino_catalogs.json.identifiers | map(attribute='name') | list)
+  no_log: true
+
+# 已存在的 catalog 不会因为 POST 409 而更新凭据：必须显式 PUT setProperty。
+# 不做「值没变就跳过」的判断（GET 会把 jdbc-password 打码，无法可靠比较），
+# 每次覆盖成同一组值就是幂等；重跑必然收敛到 meta RO。
+- name: 把已有 Doris catalog 的账号切到元数据只读账号（幂等 PUT）
+  ansible.builtin.uri:
+    url: "{{ gravitino_url }}/api/metalakes/{{ gravitino_metalake }}/catalogs/{{ gravitino_catalog }}"
+    method: PUT
+    body_format: json
+    body:
+      updates:
+        - "@type": setProperty
+          property: jdbc-user
+          value: "{{ gravitino_doris_meta_user }}"
+        - "@type": setProperty
+          property: jdbc-password
+          value: "{{ gravitino_doris_meta_password }}"
+    status_code: [200]
+  no_log: true

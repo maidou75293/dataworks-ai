@@ -1,0 +1,139 @@
+---
+# 三种角色按 group 分发：k3s_init / k3s_join / k3s_agents
+- name: 离线模式尚未实现
+  ansible.builtin.fail:
+    msg: "k3s_install_mode=offline 还没实现；当前只支持 online"
+  when: k3s_install_mode == 'offline'
+
+# 已经有二进制就不要再访问镜像源；否则幂等重跑会卡在 HEAD 请求
+- name: 检查 k3s 二进制
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_bin
+
+- name: 下载 k3s 二进制
+  ansible.builtin.get_url:
+    url: "{{ k3s_artifact_base }}/{{ k3s_version | replace('+', '-') }}/k3s"
+    dest: /usr/local/bin/k3s
+    mode: "0755"
+    force: false
+    timeout: 300
+  when:
+    - k3s_install_mode == 'online'
+    - not k3s_bin.stat.exists
+
+- name: 安装首节点（embedded etcd）
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -sfL {{ k3s_install_script_url }} | \
+      INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_DOWNLOAD=true sh -s - server \
+      --cluster-init \
+      --node-ip {{ k3s_node_ip }} \
+      --advertise-address {{ k3s_node_ip }} \
+      --tls-san {{ k3s_node_ip }} \
+      --write-kubeconfig-mode=600 \
+      {{ '--secrets-encryption' if k3s_secrets_encryption else '' }}
+  args:
+    creates: /etc/systemd/system/k3s.service
+    executable: /bin/bash
+  when: inventory_hostname == groups['k3s_init'][0]
+
+- name: 读取首节点加入令牌
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_token_raw
+  delegate_to: "{{ groups['k3s_init'][0] }}"
+  no_log: true
+  when: inventory_hostname in groups['k3s_join'] or inventory_hostname in groups['k3s_agents']
+
+- name: 其余控制平面加入 etcd
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -sfL {{ k3s_install_script_url }} | \
+      INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_DOWNLOAD=true \
+      K3S_URL=https://{{ hostvars[groups['k3s_init'][0]].k3s_node_ip }}:6443 \
+      K3S_TOKEN={{ k3s_token_raw.content | b64decode | trim }} sh -s - server \
+      --node-ip {{ k3s_node_ip }} \
+      --write-kubeconfig-mode=600 \
+      {{ '--secrets-encryption' if k3s_secrets_encryption else '' }}
+  args:
+    creates: /etc/systemd/system/k3s.service
+    executable: /bin/bash
+  when: inventory_hostname in groups['k3s_join']
+  no_log: true
+
+- name: 工作节点加入
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -sfL {{ k3s_install_script_url }} | \
+      INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_DOWNLOAD=true \
+      K3S_URL=https://{{ hostvars[groups['k3s_init'][0]].k3s_node_ip }}:6443 \
+      K3S_TOKEN={{ k3s_token_raw.content | b64decode | trim }} sh -s - \
+      --node-ip {{ k3s_node_ip }}
+  args:
+    creates: /etc/systemd/system/k3s-agent.service
+    executable: /bin/bash
+  when: inventory_hostname in groups['k3s_agents']
+  no_log: true
+
+- name: 启动并设为开机启动
+  ansible.builtin.systemd:
+    name: "{{ 'k3s-agent' if inventory_hostname in groups['k3s_agents'] else 'k3s' }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: 等首节点 kubeconfig
+  ansible.builtin.wait_for:
+    path: /etc/rancher/k3s/k3s.yaml
+    timeout: 180
+  when: inventory_hostname == groups['k3s_init'][0]
+
+- name: 等全部节点 Ready
+  ansible.builtin.command: >-
+    k3s kubectl wait node --all --for=condition=Ready --timeout=300s
+  delegate_to: "{{ groups['k3s_init'][0] }}"
+  changed_when: false
+
+- name: etcd 角色节点
+  ansible.builtin.command: >-
+    k3s kubectl get nodes -l node-role.kubernetes.io/etcd=true --no-headers
+  register: etcd_nodes
+  changed_when: false
+  delegate_to: "{{ groups['k3s_init'][0] }}"
+  run_once: true
+
+- name: etcd 成员数 = 控制平面数
+  ansible.builtin.assert:
+    that: etcd_nodes.stdout_lines | length == groups['k3s_servers'] | length
+    fail_msg: >-
+      etcd 成员 {{ etcd_nodes.stdout_lines | length }} 个，
+      期望 {{ groups['k3s_servers'] | length }} 个
+  run_once: true
+
+- name: 取首节点 kubeconfig
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: k3s_kubeconfig
+  delegate_to: "{{ groups['k3s_init'][0] }}"
+  run_once: true
+  no_log: true
+
+- name: 建控制机上的集群目录
+  ansible.builtin.file:
+    path: "{{ kubeconfig_path | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: 写控制机 kubeconfig（600）
+  ansible.builtin.copy:
+    dest: "{{ kubeconfig_path }}"
+    mode: "0600"
+    content: "{{ k3s_kubeconfig.content | b64decode | replace('127.0.0.1', hostvars[groups['k3s_init'][0]].k3s_node_ip) }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  no_log: true

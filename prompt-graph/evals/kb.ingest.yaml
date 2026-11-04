@@ -1,0 +1,33 @@
+node: kb.ingest
+version: 1
+cases:
+  - name: 正常入库
+    input:
+      kb_id: 1
+      doc_id: 1001
+      version: 1
+      title: "报销制度"
+      content: "差旅报销标准……"
+      acl_tags: ["finance"]
+    expect:
+      status: ok
+      chunk_count_gte: 1
+  - name: 重复入库幂等
+    setup:
+      - "先执行一次正常入库"
+    input:
+      kb_id: 1
+      doc_id: 1001
+      version: 1
+      title: "报销制度"
+      content: "差旅报销标准……"
+    expect:
+      row_count_delta: 0
+  - name: 空内容拒绝
+    input:
+      kb_id: 1
+      doc_id: 1002
+      version: 1
+      content: ""
+    expect:
+      error_code: KB_EMPTY_CONTENT

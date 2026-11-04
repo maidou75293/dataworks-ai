@@ -1,0 +1,48 @@
+{
+  "name": "catalog.list",
+  "version": "1.0",
+  "description": "列出 Gravitino metalake 下的 catalog（数据源目录）；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "metalake": {
+        "type": "string"
+      },
+      "catalogs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "catalog.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "CATALOG_UNAVAILABLE"
+    ]
+  },
+  "examples": [
+    {
+      "input": {},
+      "output": {
+        "metalake": "dataworks",
+        "catalogs": [
+          "doris_dev",
+          "minio_fileset"
+        ]
+      }
+    }
+  ]
+}

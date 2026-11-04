@@ -1,0 +1,59 @@
+{
+  "name": "platform.list_tasks",
+  "version": "1.0",
+  "description": "按最近运行时间列出同步任务；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "integer",
+        "default": 1
+      },
+      "keyword": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "tasks": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "项目内已有同步任务"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "platform.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "status": "SUCCESS"
+      },
+      "output": {
+        "count": 3
+      }
+    }
+  ]
+}

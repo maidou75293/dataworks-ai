@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-mysql-first-sync",
+  "module": "sync",
+  "title": "接 MySQL 源并建首次同步",
+  "goal": "从确认 MySQL 数据源到建任务、试运行、回报状态的一条完整链路；写动作全部经用户确认。",
+  "source": "docs/数据集成-验收汇总-20261019.md",
+  "steps": [
+    {"n": 1, "action": "确认项目内已有 MYSQL 类型数据源", "tool": "list_datasources",
+     "expect": "datasources 含目标源 id/jdbcUrl"},
+    {"n": 2, "action": "收集源/目标/字段映射/运行参数/验收口径五槽位，展示影响与回滚，用户确认后带 confirm=true 建任务", "tool": "platform.create_task",
+     "expect": "返回任务 id"},
+    {"n": 3, "action": "用户确认试运行影响后再运行", "tool": "platform.run_task",
+     "expect": "返回作业名"},
+    {"n": 4, "action": "查平台记录状态与 k8s 实时 Job 状态", "tool": "get_sync_task_status",
+     "expect": "lastStatus 与 jobLiveStatus 一并回报"}
+  ],
+  "failWhen": [
+    {"if": "平台 400 判定源库 MySQL >= 8.4（本平台兼容性校验：8.4.x 移除 SHOW MASTER STATUS，CDC 暂不适配）", "then": "按 docs/数据集成-MySQL版本矩阵-20261020.md 答复，建议改用 8.0.x 或等待适配后放开"},
+    {"if": "第 1 步查不到 MYSQL 数据源", "then": "转“查数据源家底”链并说明需先建源（建源是写操作，本对话只引导）"},
+    {"if": "用户未确认五槽位", "then": "停在槽位收集，不调用 create_task，不先跑再补确认"},
+    {"if": "404 同步任务不存在", "then": "核对 code/id 后重查，不猜任务"}
+  ]
+}

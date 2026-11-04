@@ -1,0 +1,198 @@
+# DEV only: hostNetwork + hostPath keeps the node IPs stable (=inventory 三节点，见 group_vars dw_node*_ip),
+# so Doris FE/BE registration survives pod restarts. PROD uses pod network + PVC.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doris-fe
+  namespace: dw-dev
+  labels:
+    app: doris-fe
+spec:
+  replicas: 1
+  # hostNetwork 单副本：滚动更新会因宿主机端口被旧 Pod 占用而 Pending。
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: doris-fe
+  template:
+    metadata:
+      labels:
+        app: doris-fe
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-1
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+        # hostPath 由 kubelet 以 root 创建，容器以 1000 运行，先 chown 再启动
+        - name: fix-perms
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          command: ["sh", "-c", "mkdir -p /mnt/meta /mnt/log && chown -R 1000:1000 /mnt/meta /mnt/log"]
+          volumeMounts:
+            - name: meta
+              mountPath: /mnt/meta
+            - name: log
+              mountPath: /mnt/log
+      containers:
+        - name: fe
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          # fe.conf 里 JAVA_OPTS_FOR_JDK_17 默认 -Xmx8192m，而容器 limit 只有 7G：
+          # 直接启动会让 FE 常驻 ~6.6G 并随时可能 OOMKill。启动前把堆改成 4G。
+          command:
+            - bash
+            - -c
+            - >-
+              sed -i 's/-Xmx8192m -Xms8192m/-Xmx3072m -Xms1024m/'
+              /opt/doris/fe/conf/fe.conf;
+              exec bash /opt/doris/fe/bin/start_fe.sh --console
+          env:
+            - name: JAVA_HOME
+              value: /usr/lib/jvm/java-17-openjdk-amd64
+            - name: DORIS_HOME
+              value: /opt/doris/fe
+            # 注意：Doris FE 实际读 fe.conf 里的 JAVA_OPTS_FOR_JDK_17（默认 8G），
+            # 这份 JAVA_OPTS 不生效。启动命令里先改 fe.conf，把堆降到 4G。
+            - name: JAVA_OPTS
+              value: -Xmx3g -Xms2g
+          ports:
+            - name: http
+              containerPort: 8030
+            - name: mysql
+              containerPort: 9030
+            - name: edit-log
+              containerPort: 9010
+            - name: rpc
+              containerPort: 9020
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8030
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: meta
+              mountPath: /opt/doris/fe/doris-meta
+            - name: log
+              mountPath: /opt/doris/fe/log
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: meta
+          hostPath:
+            path: /data/doris-fe/meta
+            type: DirectoryOrCreate
+        - name: log
+          hostPath:
+            path: /data/doris-fe/log
+            type: DirectoryOrCreate
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: doris-be
+  namespace: dw-dev
+  labels:
+    app: doris-be
+spec:
+  selector:
+    matchLabels:
+      app: doris-be
+  template:
+    metadata:
+      labels:
+        app: doris-be
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # 节点级扩缩容的开关：只有带这个标签的节点才跑 BE。
+      # 页面「Doris 节点」里的加入/退出 Doris 就是增删这个标签（再配 ADD/DROP BACKEND）。
+      nodeSelector:
+        dataworks.io/doris-be: "true"
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+        - name: fix-perms
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          command: ["sh", "-c", "mkdir -p /mnt/storage /mnt/log && chown -R 1000:1000 /mnt/storage /mnt/log"]
+          volumeMounts:
+            - name: storage
+              mountPath: /mnt/storage
+            - name: log
+              mountPath: /mnt/log
+      containers:
+        - name: be
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/doris/be/bin/start_be.sh
+            - --console
+          env:
+            - name: JAVA_HOME
+              value: /usr/lib/jvm/java-17-openjdk-amd64
+            - name: DORIS_HOME
+              value: /opt/doris/be
+          ports:
+            - name: webserver
+              containerPort: 8040
+            - name: heartbeat
+              containerPort: 9050
+            - name: be-port
+              containerPort: 9060
+            - name: brpc
+              containerPort: 8060
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1536Mi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8040
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: storage
+              mountPath: /opt/doris/be/storage
+            - name: log
+              mountPath: /opt/doris/be/log
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: storage
+          hostPath:
+            path: /data/doris-be/storage
+            type: DirectoryOrCreate
+        - name: log
+          hostPath:
+            path: /data/doris-be/log
+            type: DirectoryOrCreate
+        - name: tmp
+          emptyDir: {}

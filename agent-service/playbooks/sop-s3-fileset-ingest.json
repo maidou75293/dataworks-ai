@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-s3-fileset-ingest",
+  "module": "sync",
+  "title": "S3 文件入湖采集",
+  "goal": "S3File 数据源的批量文件采集（门禁用例 gate_s3_json/gate_s3_binary）：定位 fileset、确认格式、建任务、回查。",
+  "source": "docs/表管理与模拟数据-20261025.md",
+  "steps": [
+    {"n": 1, "action": "确认 S3 类型数据源存在", "tool": "list_datasources",
+     "expect": "含 S3 源 id"},
+    {"n": 2, "action": "列出该源已登记的 fileset", "tool": "catalog.list_filesets",
+     "expect": "fileset 名称清单"},
+    {"n": 3, "action": "查看目标 fileset 详情（路径、格式 json/binary、分隔符）", "tool": "catalog.describe_fileset",
+     "expect": "路径与格式与用户说法一致"},
+    {"n": 4, "action": "五槽位+确认后建采集任务并运行", "tool": "platform.create_task",
+     "expect": "任务 id；运行后状态可回查"}
+  ],
+  "failWhen": [
+    {"if": "fileset 未登记", "then": "说明需要先在目录登记 fileset，不凭空构造路径"},
+    {"if": "格式为 binary", "then": "按 sha256 校验口径验收，不承诺内容解析"},
+    {"if": "用户要求直接改数据源配置", "then": "只生成变更申请（UPDATE_CONFIG）"}
+  ]
+}

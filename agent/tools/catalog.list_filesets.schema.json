@@ -1,0 +1,65 @@
+{
+  "name": "catalog.list_filesets",
+  "version": "1.0",
+  "description": "列出 FILESET catalog 下某个 schema 的文件集（对象存储目录）；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "catalog": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "catalog",
+      "schema"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "catalog": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      },
+      "filesets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "catalog.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "CATALOG_UNAVAILABLE",
+      "CATALOG_OBJECT_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "catalog": "minio_fileset",
+        "schema": "kb"
+      },
+      "output": {
+        "catalog": "minio_fileset",
+        "schema": "kb",
+        "filesets": [
+          "docs"
+        ]
+      }
+    }
+  ]
+}

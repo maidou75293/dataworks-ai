@@ -1,0 +1,74 @@
+# D2 存储维护：Iceberg 小文件合并 + 旧快照清理
+#
+# 默认 suspend: true —— 需要时手动 resume：
+#   kubectl -n dw-spark patch cronjob iceberg-maintenance -p '{"spec":{"suspend":false}}'
+# 首次上线建议先 DRY_RUN=1 跑一轮看清单，再真正执行。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: iceberg-maintenance
+  namespace: dw-spark
+  labels:
+    app: iceberg-maintenance
+spec:
+  suspend: true
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: iceberg-maintenance
+        spec:
+          restartPolicy: Never
+          serviceAccountName: spark
+          containers:
+            - name: compact
+              image: ${DW_REGISTRY}/library/dataworks-spark:3.5
+              imagePullPolicy: IfNotPresent
+              command: ["bash", "/opt/ops/iceberg-compact.sh"]
+              env:
+                - name: THRIFT
+                  value: jdbc:hive2://spark-thrift.dw-spark.svc.cluster.local:10000
+                - name: CATALOG
+                  value: iceberg
+                - name: TARGET_FILE_BYTES
+                  value: "134217728"
+                - name: RETAIN_LAST
+                  value: "10"
+                - name: DRY_RUN
+                  value: "0"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: ops-script
+                  mountPath: /opt/ops
+          volumes:
+            - name: ops-script
+              configMap:
+                name: iceberg-maintenance-script
+                defaultMode: 0755
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iceberg-maintenance-script
+  namespace: dw-spark
+data:
+  # 实际脚本内容由 scripts/ops/iceberg-compact.sh 生成，apply 前用：
+  #   kubectl -n dw-spark create configmap iceberg-maintenance-script \
+  #     --from-file=iceberg-compact.sh=scripts/ops/iceberg-compact.sh --dry-run=client -o yaml | kubectl apply -f -
+  iceberg-compact.sh: |
+    #!/bin/bash
+    echo "configmap placeholder: 用 scripts/ops/iceberg-compact.sh 覆盖"
+    exit 0

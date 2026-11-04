@@ -1,0 +1,22 @@
+---
+# 接管已有 K8s：不装 k3s、不改节点系统，只装平台。
+#
+#   ansible-playbook platform.yml -i inventory/existing.yml
+#   ansible-playbook platform.yml -i inventory/existing.yml --check
+#
+# 需要：目标集群的 kubeconfig（600） + 一个可用的 StorageClass。
+- name: 接管已有 K8s
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - import_tasks: tasks/40-existing-check.yml
+      tags: [check]
+    - import_tasks: tasks/50-platform.yml
+      tags: [platform]
+    - import_tasks: tasks/55-keycloak.yml
+      tags: [keycloak]
+    - import_tasks: tasks/56-gravitino.yml
+      tags: [gravitino]
+    - import_tasks: tasks/90-verify.yml
+      tags: [verify]

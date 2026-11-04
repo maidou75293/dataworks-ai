@@ -1,0 +1,105 @@
+{
+  "name": "kb.ingest",
+  "version": "1.0",
+  "description": "把一篇文档切块、生成 embedding 并写入 Doris 知识库；相同 (doc_id, version, chunk_no) 幂等覆盖。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "kb_id": {
+        "type": "integer"
+      },
+      "doc_id": {
+        "type": "integer"
+      },
+      "version": {
+        "type": "integer",
+        "default": 1
+      },
+      "title": {
+        "type": "string"
+      },
+      "content": {
+        "type": "string"
+      },
+      "acl_tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "chunk_size": {
+        "type": "integer",
+        "default": 500
+      },
+      "chunk_overlap": {
+        "type": "integer",
+        "default": 50
+      }
+    },
+    "required": [
+      "kb_id",
+      "doc_id",
+      "content"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "doc_id": {
+        "type": "integer"
+      },
+      "version": {
+        "type": "integer"
+      },
+      "chunk_count": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "doc_id",
+      "version",
+      "chunk_count",
+      "status"
+    ]
+  },
+  "semantics": {
+    "preconditions": [
+      "kb.exists",
+      "user.authorized"
+    ],
+    "sideEffects": "writes kb_chunk rows",
+    "idempotent": true,
+    "permissions": [
+      "kb.write"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "KB_NOT_FOUND",
+      "EMBEDDING_UNAVAILABLE",
+      "DORIS_WRITE_FAILED"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "kb_id": 1,
+        "doc_id": 1001,
+        "version": 1,
+        "title": "报销制度",
+        "content": "...",
+        "acl_tags": [
+          "finance"
+        ]
+      },
+      "output": {
+        "doc_id": 1001,
+        "version": 1,
+        "chunk_count": 12,
+        "status": "ok"
+      }
+    }
+  ]
+}

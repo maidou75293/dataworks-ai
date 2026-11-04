@@ -1,0 +1,75 @@
+{
+  "name": "embed.query",
+  "version": "1.0",
+  "description": "把文本转成 512 维归一化向量；只读、幂等。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "texts": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64
+      },
+      "is_query": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": [
+      "texts"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "dim": {
+        "type": "integer"
+      },
+      "embeddings": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "embedding.ready"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "embed.use"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "EMBEDDING_UNAVAILABLE",
+      "TOO_MANY_TEXTS"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "texts": [
+          "报销标准是多少？"
+        ],
+        "is_query": true
+      },
+      "output": {
+        "dim": 512,
+        "embeddings": [
+          [
+            0.01,
+            0.02
+          ]
+        ]
+      }
+    }
+  ]
+}

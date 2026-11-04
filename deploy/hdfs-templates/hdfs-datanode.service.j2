@@ -1,0 +1,23 @@
+[Unit]
+Description=HDFS DataNode
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ hdfs_user }}
+Group={{ hdfs_user }}
+Environment=JAVA_HOME={{ java_home }}
+Environment=HADOOP_HOME={{ hadoop_home }}
+Environment=HADOOP_CONF_DIR={{ hadoop_home }}/etc/hadoop
+Environment=HADOOP_LOG_DIR={{ hdfs_log_dir }}
+Environment=HADOOP_PID_DIR={{ hdfs_data_dir }}/pid
+Environment=HDFS_NAMENODE_USER={{ hdfs_user }}
+Environment=HDFS_DATANODE_USER={{ hdfs_user }}
+Environment="HADOOP_OPTS=--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED"
+ExecStart={{ hadoop_home }}/bin/hdfs datanode
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

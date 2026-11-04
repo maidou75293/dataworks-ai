@@ -1,0 +1,99 @@
+{
+  "name": "platform.create_task",
+  "version": "1.0",
+  "description": "创建同步任务（不自动运行）。必须先向用户说明影响并 confirm=true。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "confirm": {
+        "type": "boolean"
+      },
+      "projectId": {
+        "type": "integer",
+        "default": 1
+      },
+      "code": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "sourceType": {
+        "type": "string"
+      },
+      "sourceConfig": {
+        "type": "object",
+        "description": "源端配置。可含 params 数组声明运行参数：[{name,type,required,default,description}]，SQL 用 ${name} 引用；type 支持 string/int/long/number/bool/date/datetime/ident（动态表名必须用 ident）。格式见 docs/数据集成-运行参数声明.md"
+      },
+      "sinkType": {
+        "type": "string"
+      },
+      "sinkConfig": {
+        "type": "object",
+        "description": "目标配置。MongoDB-CDC 接 JDBC 汇时 primary_keys 必须用 [\"_id\"]：change stream 的 DELETE 事件只带 _id，用业务 id 做主键时删除不会传播。"
+      },
+      "jobMode": {
+        "type": "string",
+        "enum": [
+          "BATCH",
+          "STREAMING"
+        ]
+      },
+      "parallelism": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "confirm",
+      "code",
+      "name",
+      "sourceType",
+      "sourceConfig",
+      "sinkType",
+      "sinkConfig"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "code": {
+        "type": "string"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "连接器状态 READY",
+      "用户已确认"
+    ],
+    "sideEffects": "insert platform.sync_task",
+    "idempotent": false,
+    "permissions": [
+      "platform.write"
+    ],
+    "requiresConfirmation": true,
+    "errorCodes": [
+      "CONFIRM_REQUIRED",
+      "INTERNAL_TOKEN_INVALID",
+      "TASK_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "confirm": true,
+        "code": "kafka_to_mysql"
+      },
+      "output": {
+        "ok": true,
+        "id": 300
+      }
+    }
+  ]
+}

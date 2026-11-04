@@ -1,0 +1,27 @@
+---
+# 先把私有仓库拉起来，再把镜像灌进去，最后才装平台。
+# 平台 Pod 的镜像全部指向 30500，仓库没起来会 ImagePullBackOff。
+- name: 私有仓库
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: 应用仓库清单
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        apply: true
+        definition: "{{ lookup('file', deploy_dir ~ '/k8s/05-registry.yaml') | from_yaml_all | list }}"
+
+    - name: 等仓库就绪
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Deployment
+        namespace: registry
+      register: reg
+      until: >-
+        (reg.resources | length) > 0 and
+        (reg.resources[0].status.availableReplicas | default(0) | int) >= 1
+      retries: 60
+      delay: 5
+      changed_when: false

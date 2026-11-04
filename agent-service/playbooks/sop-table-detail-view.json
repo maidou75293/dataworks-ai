@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-table-detail-view",
+  "module": "catalog",
+  "title": "表结构详情与只读预览",
+  "goal": "给出表元数据与有限行的只读预览；查询跟随项目级 Doris 路由，受分级脱敏约束。",
+  "source": "docs/数仓连接路由-20261025.md",
+  "steps": [
+    {"n": 1, "action": "查表元数据（字段、类型、注释）", "tool": "catalog.describe_table",
+     "expect": "字段清单"},
+    {"n": 2, "action": "只读 SELECT 预览，显式 limit", "tool": "doris.sql_query",
+     "expect": "有限行数，敏感字段按脱敏口径返回"},
+    {"n": 3, "action": "需要文件类对象时查 fileset 详情", "tool": "catalog.describe_fileset",
+     "expect": "路径与格式"}
+  ],
+  "failWhen": [
+    {"if": "查询被分级网关拦下（ENFORCE）", "then": "说明这是平台脱敏管控，给脱敏申请路径，不换写法绕过"},
+    {"if": "表不在当前项目路由的集群", "then": "说明查询跟随项目上下文，请确认项目或到对应库查看"},
+    {"if": "用户要全表导出", "then": "预览有行数上限，导出走数据服务或申请"}
+  ]
+}

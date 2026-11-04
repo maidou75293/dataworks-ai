@@ -1,0 +1,220 @@
+---
+# HDFS 原生部署（三节点）：NameNode 在首节点，DataNode 在全部节点。
+# 与 K8s 平台解耦；平台只通过 WebHDFS 地址连接。
+#
+#   ansible-playbook hdfs.yml
+#   ansible-playbook hdfs.yml --limit dw-k8s-2
+#
+# 幂等：已解压/已格式化/已启动都不会重做。
+- name: HDFS 原生部署
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  vars:
+    hadoop_version: "3.4.1"
+    hadoop_home: /opt/hadoop
+    hadoop_real_home: "/opt/hadoop-{{ hadoop_version }}"
+    java_home: /opt/java/openjdk
+    hdfs_user: hdfs
+    hdfs_data_dir: /data/hdfs
+    hdfs_log_dir: /var/log/hadoop
+    hdfs_artifact_dir: "{{ deploy_dir }}/artifacts/hadoop"
+    hdfs_namenode_host: "{{ groups['k3s_init'][0] }}"
+    hdfs_namenode_ip: "{{ hostvars[groups['k3s_init'][0]].k3s_node_ip }}"
+  tasks:
+    - name: 发行版检查
+      ansible.builtin.assert:
+        that: ansible_os_family == 'Debian'
+        fail_msg: "HDFS 原生部署当前只支持 Ubuntu/Debian"
+
+    - name: 创建 hdfs 用户
+      ansible.builtin.user:
+        name: "{{ hdfs_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: 建目录
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ hdfs_user }}"
+        group: "{{ hdfs_user }}"
+        mode: "0755"
+      loop:
+        - "{{ hdfs_data_dir }}/namenode"
+        - "{{ hdfs_data_dir }}/datanode"
+        - "{{ hdfs_data_dir }}/tmp"
+        - "{{ hdfs_data_dir }}/pid"
+        - "{{ hdfs_log_dir }}"
+        - /opt/java
+        - "{{ java_home }}"
+
+    - name: 解压 Hadoop
+      ansible.builtin.unarchive:
+        src: "{{ hdfs_artifact_dir }}/hadoop-{{ hadoop_version }}.tar.gz"
+        dest: /opt
+        remote_src: false
+        creates: "{{ hadoop_real_home }}/bin/hdfs"
+
+    - name: 解压 JRE
+      ansible.builtin.unarchive:
+        src: "{{ hdfs_artifact_dir }}/jre17.tar.gz"
+        dest: "{{ java_home }}"
+        remote_src: false
+        creates: "{{ java_home }}/bin/java"
+
+    - name: Hadoop 软链
+      ansible.builtin.file:
+        src: "{{ hadoop_real_home }}"
+        dest: "{{ hadoop_home }}"
+        state: link
+        force: true
+
+    - name: core-site.xml
+      ansible.builtin.template:
+        src: hdfs-templates/core-site.xml.j2
+        dest: "{{ hadoop_home }}/etc/hadoop/core-site.xml"
+        owner: "{{ hdfs_user }}"
+        group: "{{ hdfs_user }}"
+        mode: "0644"
+
+    - name: hdfs-site.xml
+      ansible.builtin.template:
+        src: hdfs-templates/hdfs-site.xml.j2
+        dest: "{{ hadoop_home }}/etc/hadoop/hdfs-site.xml"
+        owner: "{{ hdfs_user }}"
+        group: "{{ hdfs_user }}"
+        mode: "0644"
+
+    - name: hadoop-env.sh
+      ansible.builtin.template:
+        src: hdfs-templates/hadoop-env.sh.j2
+        dest: "{{ hadoop_home }}/etc/hadoop/hadoop-env.sh"
+        owner: "{{ hdfs_user }}"
+        group: "{{ hdfs_user }}"
+        mode: "0755"
+
+    - name: workers
+      ansible.builtin.copy:
+        content: "{{ groups['k3s_cluster'] | join('\n') }}\n"
+        dest: "{{ hadoop_home }}/etc/hadoop/workers"
+        owner: "{{ hdfs_user }}"
+        group: "{{ hdfs_user }}"
+        mode: "0644"
+
+    - name: 格式化 NameNode（仅首节点，首次）
+      ansible.builtin.command: "{{ hadoop_home }}/bin/hdfs namenode -format -force -nonInteractive"
+      args:
+        creates: "{{ hdfs_data_dir }}/namenode/current/VERSION"
+      become_user: "{{ hdfs_user }}"
+      environment:
+        JAVA_HOME: "{{ java_home }}"
+        HADOOP_HOME: "{{ hadoop_home }}"
+        HADOOP_CONF_DIR: "{{ hadoop_home }}/etc/hadoop"
+        HADOOP_LOG_DIR: "{{ hdfs_log_dir }}"
+      when: inventory_hostname == hdfs_namenode_host
+
+    - name: NameNode systemd（仅首节点）
+      ansible.builtin.template:
+        src: hdfs-templates/hdfs-namenode.service.j2
+        dest: /etc/systemd/system/hdfs-namenode.service
+        mode: "0644"
+      when: inventory_hostname == hdfs_namenode_host
+
+    - name: DataNode systemd（全部节点）
+      ansible.builtin.template:
+        src: hdfs-templates/hdfs-datanode.service.j2
+        dest: /etc/systemd/system/hdfs-datanode.service
+        mode: "0644"
+
+    - name: 查 ufw 状态
+      ansible.builtin.command: ufw status
+      register: ufw_status
+      changed_when: false
+      failed_when: false
+      when: ansible_os_family == 'Debian'
+
+    - name: 防火墙放行 HDFS 端口（ufw）
+      ansible.builtin.command: ufw allow {{ item }}
+      loop: [9870/tcp, 9000/tcp, 9864/tcp, 9866/tcp]
+      when:
+        - ansible_os_family == 'Debian'
+        - ufw_status is defined
+        - "'Status: active' in (ufw_status.stdout | default(''))"
+      changed_when: false
+
+    - name: 防火墙放行 HDFS 端口（firewalld）
+      ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}
+      loop: [9870/tcp, 9000/tcp, 9864/tcp, 9866/tcp]
+      when: ansible_os_family == 'RedHat'
+      changed_when: false
+      failed_when: false
+
+    - name: 重载 firewalld
+      ansible.builtin.command: firewall-cmd --reload
+      when: ansible_os_family == 'RedHat'
+      changed_when: false
+      failed_when: false
+
+    - name: 启动 NameNode
+      ansible.builtin.systemd:
+        name: hdfs-namenode
+        state: started
+        enabled: true
+        daemon_reload: true
+      when: inventory_hostname == hdfs_namenode_host
+
+    - name: 启动 DataNode
+      ansible.builtin.systemd:
+        name: hdfs-datanode
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: 等 WebHDFS 就绪
+      ansible.builtin.uri:
+        url: "http://{{ hdfs_namenode_ip }}:9870/"
+        status_code: 200
+      delegate_to: localhost
+      become: false
+      retries: 60
+      delay: 5
+      when: inventory_hostname == hdfs_namenode_host
+
+    - name: 建 /warehouse
+      ansible.builtin.command: "{{ hadoop_home }}/bin/hdfs dfs -mkdir -p /warehouse"
+      become_user: "{{ hdfs_user }}"
+      environment:
+        JAVA_HOME: "{{ java_home }}"
+        HADOOP_HOME: "{{ hadoop_home }}"
+        HADOOP_CONF_DIR: "{{ hadoop_home }}/etc/hadoop"
+        HADOOP_LOG_DIR: "{{ hdfs_log_dir }}"
+      changed_when: false
+      when: inventory_hostname == hdfs_namenode_host
+
+    - name: 放开 /warehouse 权限（简单认证，无 Kerberos）
+      ansible.builtin.command: "{{ hadoop_home }}/bin/hdfs dfs -chmod -R 777 /warehouse"
+      become_user: "{{ hdfs_user }}"
+      environment:
+        JAVA_HOME: "{{ java_home }}"
+        HADOOP_HOME: "{{ hadoop_home }}"
+        HADOOP_CONF_DIR: "{{ hadoop_home }}/etc/hadoop"
+        HADOOP_LOG_DIR: "{{ hdfs_log_dir }}"
+      changed_when: false
+      when: inventory_hostname == hdfs_namenode_host
+
+    - name: 等 DataNode 全部注册
+      ansible.builtin.command: "{{ hadoop_home }}/bin/hdfs dfsadmin -report"
+      become_user: "{{ hdfs_user }}"
+      environment:
+        JAVA_HOME: "{{ java_home }}"
+        HADOOP_HOME: "{{ hadoop_home }}"
+        HADOOP_CONF_DIR: "{{ hadoop_home }}/etc/hadoop"
+        HADOOP_LOG_DIR: "{{ hdfs_log_dir }}"
+      register: hdfs_report
+      until: hdfs_report.stdout is search('Live datanodes \\(' ~ (groups['k3s_cluster'] | length) ~ '\\)')
+      retries: 60
+      delay: 5
+      changed_when: false
+      when: inventory_hostname == hdfs_namenode_host

@@ -1,0 +1,77 @@
+{
+  "name": "kb.delete",
+  "version": "1.0",
+  "description": "使一篇文档的指定版本失效或物理删除；破坏性操作，必须人工审批。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "kb_id": {
+        "type": "integer"
+      },
+      "doc_id": {
+        "type": "integer"
+      },
+      "version": {
+        "type": "integer"
+      },
+      "hard": {
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "required": [
+      "kb_id",
+      "doc_id",
+      "version"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "doc_id": {
+        "type": "integer"
+      },
+      "version": {
+        "type": "integer"
+      },
+      "deleted_chunks": {
+        "type": "integer"
+      },
+      "mode": {
+        "type": "string"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "doc.exists",
+      "user.authorized"
+    ],
+    "sideEffects": "marks is_current=false or deletes rows",
+    "idempotent": true,
+    "permissions": [
+      "kb.delete"
+    ],
+    "requiresApproval": true,
+    "errorCodes": [
+      "DOC_NOT_FOUND",
+      "APPROVAL_REQUIRED"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "kb_id": 1,
+        "doc_id": 1001,
+        "version": 1,
+        "hard": false
+      },
+      "output": {
+        "doc_id": 1001,
+        "version": 1,
+        "deleted_chunks": 12,
+        "mode": "soft"
+      }
+    }
+  ]
+}

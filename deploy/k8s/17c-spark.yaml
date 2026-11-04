@@ -1,0 +1,276 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dw-spark
+---
+# Spark Thrift Server（常驻小集群）：平台脚本引擎 SPARK 的运行时。
+#
+# 形态（不是 Spark Operator，也不是按需提交）：
+#   spark-thrift   1 副本 = driver + Thrift Server（HiveServer2 协议，10000）
+#   executor       2 个，由 driver 在 k8s 上按固定实例数拉起（1 core / 1Gi）
+#
+# 关键点：
+# - client 模式：driver 就在 spark-thrift Pod 里，executor 由它连 k8s API 创建。
+# - driver 必须把 Pod IP 告诉 executor（spark.driver.host=$POD_IP），否则 executor 回连失败。
+# - 镜像 dataworks-spark:3.5 = 官方 apache/spark:3.5.3 + Iceberg runtime/AWS bundle
+#   + spark-doris-connector + hadoop-aws。构建脚本 scripts/ci/build-spark-image.sh。
+# - Iceberg 用 hadoop catalog + S3FileIO（与数据湖 V100 的 s3://lake/warehouse 一致），
+#   凭据在启动时从 Secret 注入到 /tmp 下的 spark-defaults.conf，不写进 ConfigMap。
+# - Doris 用 spark-doris-connector 的 Catalog：select * from doris.<db>.<table>。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark
+  namespace: dw-spark
+---
+# driver 需要自己创建/删除 executor Pod，以及读取 Pod 日志
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spark
+  namespace: dw-spark
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "persistentvolumeclaims", "secrets"]
+    # deletecollection：driver 退出时会按 labelSelector 批量清理 executor Pod/Service/ConfigMap/PVC
+    verbs: ["get", "list", "watch", "create", "delete", "deletecollection", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spark
+  namespace: dw-spark
+subjects:
+  - kind: ServiceAccount
+    name: spark
+    namespace: dw-spark
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: spark
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-thrift-entrypoint
+  namespace: dw-spark
+data:
+  entrypoint.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    : "${POD_IP:?POD_IP required}"
+    : "${S3_ACCESS_KEY:?S3_ACCESS_KEY required}"
+    : "${S3_SECRET_KEY:?S3_SECRET_KEY required}"
+    : "${DORIS_USER:?DORIS_USER required}"
+    : "${DORIS_PASSWORD:?DORIS_PASSWORD required}"
+
+    # 配置里有密钥，只能写到容器临时目录；ConfigMap 里只放这份启动脚本
+    CONF_DIR=/tmp/spark-conf
+    mkdir -p "$CONF_DIR"
+    cp /opt/spark/conf/* "$CONF_DIR"/ 2>/dev/null || true
+    cat > "$CONF_DIR/spark-defaults.conf" <<EOF
+    spark.master                                     k8s://https://kubernetes.default.svc
+    spark.submit.deployMode                          client
+    spark.kubernetes.namespace                       dw-spark
+    spark.kubernetes.authenticate.driver.serviceAccountName spark
+    spark.kubernetes.authenticate.caCertFile         /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    spark.kubernetes.authenticate.oauthTokenFile     /var/run/secrets/kubernetes.io/serviceaccount/token
+    spark.kubernetes.container.image                 ${DW_REGISTRY}/library/dataworks-spark:3.5
+    spark.kubernetes.container.image.pullPolicy      Always
+    spark.kubernetes.executor.label.app              spark-executor
+    spark.executor.instances                         2
+    spark.executor.cores                             1
+    spark.executor.memory                            512m
+    spark.executor.memoryOverhead                    256m
+    # 集群 requests 已接近打满，调度按 400m/768Mi 计，实际可用到 limit
+    spark.kubernetes.executor.request.cores           250m
+    # 失败时保留 executor pod，便于看日志定位（默认会被删掉）
+    spark.kubernetes.executor.deleteOnTermination     false
+    spark.driver.memory                              1g
+    spark.driver.host                                ${POD_IP}
+    spark.driver.bindAddress                         0.0.0.0
+    spark.dynamicAllocation.enabled                  false
+    spark.ui.enabled                                 false
+    spark.sql.adaptive.enabled                       true
+    spark.sql.shuffle.partitions                     8
+
+    # Iceberg：与 Doris 外部 Catalog 共用 s3://lake/warehouse（hadoop catalog）
+    spark.sql.extensions                             org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+    spark.sql.catalog.iceberg                        org.apache.iceberg.spark.SparkCatalog
+    spark.sql.catalog.iceberg.type                   hadoop
+    spark.sql.catalog.iceberg.warehouse              s3a://lake/warehouse
+    # Hadoop 默认没有 s3 方案，只有 s3a；显式映射，避免 No FileSystem for scheme "s3"
+    spark.hadoop.fs.s3.impl                          org.apache.hadoop.fs.s3a.S3AFileSystem
+    spark.hadoop.fs.s3a.impl                         org.apache.hadoop.fs.s3a.S3AFileSystem
+    spark.sql.catalog.iceberg.io-impl                org.apache.iceberg.hadoop.HadoopFileIO
+    spark.sql.catalog.iceberg.s3.endpoint            http://minio.dw-dev.svc.cluster.local:9000
+    spark.sql.catalog.iceberg.s3.access-key-id       ${S3_ACCESS_KEY}
+    spark.sql.catalog.iceberg.s3.secret-access-key   ${S3_SECRET_KEY}
+    spark.sql.catalog.iceberg.s3.path-style-access   true
+    spark.sql.catalog.iceberg.client.region          us-east-1
+
+    # 同时装好 hadoop-aws：用户 SQL 里写 s3a:// 也能读
+    spark.hadoop.fs.s3a.endpoint                     http://minio.dw-dev.svc.cluster.local:9000
+    spark.hadoop.fs.s3a.access.key                   ${S3_ACCESS_KEY}
+    spark.hadoop.fs.s3a.secret.key                   ${S3_SECRET_KEY}
+    spark.hadoop.fs.s3a.path.style.access            true
+    spark.hadoop.fs.s3a.impl                         org.apache.hadoop.fs.s3a.S3AFileSystem
+
+    # Doris：spark-doris-connector 的 TableCatalog → select * from doris.<db>.<table>
+    spark.sql.catalog.doris                          org.apache.doris.spark.catalog.DorisTableCatalog
+    spark.sql.catalog.doris.fenodes                  doris-fe.dw-dev.svc.cluster.local:8030
+    spark.sql.catalog.doris.query.port               9030
+    spark.sql.catalog.doris.user                     ${DORIS_USER}
+    spark.sql.catalog.doris.password                 ${DORIS_PASSWORD}
+    EOF
+
+    export SPARK_CONF_DIR="$CONF_DIR"
+    export SPARK_HOME=/opt/spark
+    # 底座镜像是 Flink 镜像，JRE 装在 /opt/java 且未导出 JAVA_HOME，Spark 脚本要求必须有
+    export JAVA_HOME="${JAVA_HOME:-/opt/java}"
+    export PATH="$JAVA_HOME/bin:$SPARK_HOME/bin:$PATH"
+
+    # 常驻：spark-submit 前台运行，容器退出由 Deployment 拉起
+    exec "$SPARK_HOME/bin/spark-submit" \
+      --name SparkThriftServer \
+      --class org.apache.spark.sql.hive.thriftserver.HiveThriftServer2 \
+      --conf spark.driver.host="$POD_IP" \
+      --conf spark.driver.bindAddress=0.0.0.0 \
+      --conf spark.sql.hive.thriftServer.singleSession=false \
+      --hiveconf hive.server2.thrift.port=10000 \
+      --hiveconf hive.server2.thrift.bind.host=0.0.0.0 \
+      spark-internal
+---
+# 官方镜像的 /etc/passwd 缺 spark 用户时，Hadoop UGI 会取不到用户名
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-nss
+  namespace: dw-spark
+data:
+  passwd: |
+    root:x:0:0:root:/root:/bin/bash
+    spark:x:185:185:spark:/opt/spark:/bin/bash
+  group: |
+    root:x:0:
+    spark:x:185:
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-thrift
+  namespace: dw-spark
+  labels:
+    app: spark-thrift
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: spark-thrift
+  template:
+    metadata:
+      labels:
+        app: spark-thrift
+    spec:
+      serviceAccountName: spark
+      restartPolicy: Always
+      containers:
+        - name: spark-thrift
+          image: ${DW_REGISTRY}/library/dataworks-spark:3.5
+          imagePullPolicy: Always
+          command: ["/bin/bash", "/opt/spark-thrift/entrypoint.sh"]
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+            - name: DORIS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_USER
+            - name: DORIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_PASSWORD
+          ports:
+            - name: thrift
+              containerPort: 10000
+          startupProbe:
+            tcpSocket:
+              port: thrift
+            # driver 要先在 k8s 上拉起 2 个 executor，冷启动给足 5 分钟
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: thrift
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: thrift
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: entrypoint
+              mountPath: /opt/spark-thrift
+              readOnly: true
+            # 官方镜像没有 /etc/passwd 之外的解析配置时 Hadoop UGI 可能取不到用户名
+            - name: nss
+              mountPath: /etc/passwd
+              subPath: passwd
+              readOnly: true
+            - name: nss
+              mountPath: /etc/group
+              subPath: group
+              readOnly: true
+      volumes:
+        - name: entrypoint
+          configMap:
+            name: spark-thrift-entrypoint
+            defaultMode: 0755
+        - name: nss
+          configMap:
+            name: spark-nss
+            items:
+              - key: passwd
+                path: passwd
+              - key: group
+                path: group
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-thrift
+  namespace: dw-spark
+spec:
+  selector:
+    app: spark-thrift
+  ports:
+    - name: thrift
+      port: 10000
+      targetPort: thrift

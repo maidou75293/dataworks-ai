@@ -1,0 +1,59 @@
+{
+  "name": "platform.list_datasources",
+  "version": "1.0",
+  "description": "列出当前项目的数据源；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "integer",
+        "default": 1
+      },
+      "type": {
+        "type": "string"
+      },
+      "keyword": {
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "datasources": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "项目内已有数据源"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "platform.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "type": "POSTGRESQL"
+      },
+      "output": {
+        "count": 1
+      }
+    }
+  ]
+}

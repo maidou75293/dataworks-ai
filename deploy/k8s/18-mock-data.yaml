@@ -1,0 +1,72 @@
+# 模拟业务数据服务：用户 / 商品 / 订单，写 Doris（Stream Load）。
+#
+# 只开 ClusterIP：集群内调用即可，不对外暴露写接口。
+# 表结构由「表管理」创建；本服务只负责造数据和写入。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-data
+  namespace: dw-dev
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mock-data
+  template:
+    metadata:
+      labels:
+        app: mock-data
+    spec:
+      containers:
+        - name: mock-data
+          image: ${DW_REGISTRY}/library/mock-data:2
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/opt/mock-data/app.py"]
+          env:
+            - name: DORIS_HTTP
+              value: http://doris-fe.dw-dev.svc.cluster.local:8030
+            - name: DORIS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_USER
+            - name: DORIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_PASSWORD
+            - name: MOCK_DATABASE
+              value: demo_retail
+            - name: MOCK_PORT
+              value: "8090"
+          ports:
+            - name: http
+              containerPort: 8090
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-data
+  namespace: dw-dev
+spec:
+  selector:
+    app: mock-data
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http

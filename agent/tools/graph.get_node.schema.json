@@ -1,0 +1,43 @@
+{
+  "name": "graph.get_node",
+  "version": "1.0",
+  "description": "按 id 取提示词图谱节点的完整定义；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ]
+  },
+  "outputSchema": {
+    "type": "object"
+  },
+  "semantics": {
+    "preconditions": [],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "graph.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "NODE_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "id": "kb.search"
+      },
+      "output": {
+        "id": "kb.search",
+        "version": 1,
+        "title": "知识库语义检索"
+      }
+    }
+  ]
+}

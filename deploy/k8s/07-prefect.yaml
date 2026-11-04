@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-server
+  namespace: dw-dev
+  labels:
+    app: prefect-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-server
+  template:
+    metadata:
+      labels:
+        app: prefect-server
+    spec:
+      containers:
+        - name: server
+          image: ${DW_REGISTRY}/library/prefect:3-dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/prefect/venv/bin/prefect
+            - server
+            - start
+            - --host
+            - 0.0.0.0
+            - --port
+            - "4200"
+          env:
+            - name: PREFECT_SERVER_DATABASE_CONNECTION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-db
+                  key: connection-url
+            - name: PREFECT_API_DATABASE_CONNECTION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-db
+                  key: connection-url
+            - name: PREFECT_SERVER_API_HOST
+              value: 0.0.0.0
+            - name: PREFECT_UI_API_URL
+              value: http://prefect.dw-dev.svc.cluster.local:4200/api
+          ports:
+            - name: http
+              containerPort: 4200
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 4200
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4200
+            initialDelaySeconds: 90
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect
+  namespace: dw-dev
+  labels:
+    app: prefect-server
+spec:
+  selector:
+    app: prefect-server
+  ports:
+    - name: http
+      port: 4200
+      targetPort: 4200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-worker
+  namespace: dw-dev
+  labels:
+    app: prefect-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-worker
+  template:
+    metadata:
+      labels:
+        app: prefect-worker
+    spec:
+      containers:
+        - name: worker
+          image: ${DW_REGISTRY}/library/prefect:3-dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/prefect/venv/bin/python
+            - /opt/prefect/flows/prefect_flow.py
+          env:
+            - name: PREFECT_API_URL
+              value: http://prefect.dw-dev.svc.cluster.local:4200/api
+            - name: MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-auth
+                  key: MCP_TOKEN
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: flow
+              mountPath: /opt/prefect/flows
+      volumes:
+        - name: flow
+          configMap:
+            name: prefect-flow

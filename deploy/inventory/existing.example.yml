@@ -1,0 +1,19 @@
+# 接管已有 K8s：复制成 existing.yml 再改。
+# 不需要 SSH 到节点，只需要控制机上的 kubeconfig。
+#
+#   cp inventory/existing.example.yml inventory/existing.yml
+#   ansible-playbook platform.yml -i inventory/existing.yml
+
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+  vars:
+    cluster_name: existing
+    # 把目标集群的 kubeconfig 放到这个路径，权限 600
+    kubeconfig_path: "{{ lookup('env', 'HOME') }}/.dataworks/clusters/existing.kubeconfig"
+    platform_namespace: dw-dev
+    # 改成目标集群实际有的 StorageClass
+    platform_storage_class: local-path
+    # 改成任一节点 IP / VIP / 负载均衡地址，用于 /api/health
+    platform_health_host: 10.0.0.10

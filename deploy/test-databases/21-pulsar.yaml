@@ -1,0 +1,67 @@
+# Pulsar 3.3.1 standalone，用于源/汇端到端验证。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-pulsar
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulsar
+  namespace: dataworks-test-pulsar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pulsar
+  template:
+    metadata:
+      labels:
+        app: pulsar
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-2
+      containers:
+        - name: pulsar
+          image: docker.io/apachepulsar/pulsar:3.3.1
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "bin/pulsar standalone --no-functions-worker --no-stream-storage"]
+          env:
+            - name: PULSAR_MEM
+              value: "-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m"
+            - name: PULSAR_STANDALONE_USE_ZOOKEEPER
+              value: "1"
+          ports:
+            - containerPort: 6650
+              name: binary
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+          volumeMounts:
+            - name: data
+              mountPath: /pulsar/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulsar
+  namespace: dataworks-test-pulsar
+spec:
+  selector:
+    app: pulsar
+  ports:
+    - name: binary
+      port: 6650
+      targetPort: 6650
+    - name: http
+      port: 8080
+      targetPort: 8080

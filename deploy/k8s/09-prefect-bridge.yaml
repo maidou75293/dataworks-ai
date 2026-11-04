@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-bridge
+  namespace: dw-dev
+  labels:
+    app: prefect-bridge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-bridge
+  template:
+    metadata:
+      labels:
+        app: prefect-bridge
+    spec:
+      # 与 prefect-pool-worker 固定在同一节点：bridge 挂载 prefect-flows 卷后，
+      # 可以直接判断「worker 所在节点是否已经看到刚发布的 Flow 文件」。
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-1
+      containers:
+        - name: bridge
+          image: ${DW_REGISTRY}/library/prefect:3-dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/prefect/venv/bin/uvicorn
+            - prefect_bridge:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "4300"
+            - --app-dir
+            - /opt/prefect/bridge
+          env:
+            - name: PREFECT_API_URL
+              value: http://prefect.dw-dev.svc.cluster.local:4200/api
+            # bridge 能创建/删除部署、触发任意 run：必须校验共享内部凭证
+            - name: PLATFORM_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: PLATFORM_INTERNAL_TOKEN
+          ports:
+            - name: http
+              containerPort: 4300
+          # 只是个转发 API 的小服务；500m 在 worker 节点上排不下，降到 100m
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4300
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4300
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: bridge
+              mountPath: /opt/prefect/bridge
+            # 与 worker 同节点挂同一个 ConfigMap：发布后探测 Flow 文件是否已同步
+            - name: flows
+              mountPath: /opt/prefect/flows
+              readOnly: true
+      volumes:
+        - name: bridge
+          configMap:
+            name: prefect-bridge
+        - name: flows
+          configMap:
+            name: prefect-flows
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-bridge
+  namespace: dw-dev
+  labels:
+    app: prefect-bridge
+spec:
+  selector:
+    app: prefect-bridge
+  ports:
+    - name: http
+      port: 4300
+      targetPort: 4300

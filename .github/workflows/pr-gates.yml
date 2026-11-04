@@ -1,0 +1,110 @@
+# ============================================================================
+# pr-gates.yml — 产品侧 PR 四条闸门（REQ-OSS-CI2-1，审计 20261104 §四「最小 PR 闸门五条」之①②③④）
+#
+# PR 上的完整检查面 = 本文件 4 job + selftest.yml 1 job = 5 道：
+#   ① backend-test    mvnw -B clean test（本卡补 wrapper：backend/mvnw、only-script 形、Central 源）
+#   ② web-test        npm ci → tsc --noEmit → vitest run（本卡接线 test/typecheck 脚本 + jsdom 环境）
+#   ③ static-checks   scripts/ci/run-static-checks.sh（13 个无状态检查器，名单与排除理由见脚本头注）
+#   ④ commit-msg      scripts/ci/check-commit-msg.sh（本地 hook 原样搬 CI，判定逻辑单源）
+#   ⑤ dependabot      .github/dependabot.yml（配置件非 job：maven/npm/github-actions 三条线）
+#     powershell.exe 加 HOST_OS 门 + 判空解析兼容新尾标 skips=）
+#
+# 基线红如实入账，不迁就：backend 全量 1434 跑有 6 个预存在红（5 条=SEC-CLEAN 交卷定案三因、根因已回主控转派 CC-A；
+# 1 条 TableDorisFailureTest 全量新暴面，明细见 docs/evidence/req-oss-ci2-1/README.md 第四节），
+# static 的 tenant 双闸 11+5 处未登记违规（本卡取证于 evidence）。闸门红=正确判定，别改门禁。
+# ============================================================================
+name: PR Gates（产品侧五闸，REQ-OSS-CI2-1）
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    name: ① 后端 mvn clean test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: mvnw -B clean test（不依赖 runner 预装 maven，wrapper 自举发行版）
+        working-directory: backend
+        run: sh ./mvnw -B clean test
+
+  web-test:
+    name: ② 前端 npm ci + tsc + vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: npm ci（lockfile 钉死，lock 与 package.json 不同步即红）
+        working-directory: web
+        run: npm ci
+      - name: tsc --noEmit
+        working-directory: web
+        run: npm run typecheck
+      - name: vitest run（jsdom 已接线：vite.config.ts test 块 + __tests__/setup.ts）
+        working-directory: web
+        run: npm test
+
+  static-checks:
+    name: ③ 静态检查器套件
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: run-static-checks.sh（13 个无状态检查器逐条 PASS/FAIL + 红项正文）
+        run: bash scripts/ci/run-static-checks.sh
+
+  commit-msg:
+    name: ④ commit-msg 闸（PR 全部提交逐条判）
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PR：基线..HEAD 每个 commit subject 过闸
+        if: github.event_name == 'pull_request'
+        run: |
+          set -uo pipefail
+          git log --format='%s' "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" \
+            | bash scripts/ci/check-commit-msg.sh -
+      - name: 非 PR 触发：只判 HEAD
+        if: github.event_name != 'pull_request'
+        run: |
+          set -uo pipefail
+          git log -1 --format='%s' | bash scripts/ci/check-commit-msg.sh -
+      - name: 闸的红能力自检（坏 subject 必红/豁免必绿，防闸哑火）
+        run: bash scripts/ci/check-commit-msg.sh --selftest

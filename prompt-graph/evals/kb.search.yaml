@@ -1,0 +1,24 @@
+node: kb.search
+version: 1
+cases:
+  - name: 正常检索带引用
+    input:
+      query: "报销标准是多少？"
+      kb_id: 1
+      acl_tags: ["finance"]
+      top_k: 5
+    expect:
+      citation_fields: [chunk_id, doc_id, title]
+      max_results: 5
+  - name: ACL 过滤
+    input:
+      query: "报销标准是多少？"
+      acl_tags: ["public"]
+    expect:
+      forbidden_tags: ["finance"]
+  - name: 空结果不编造
+    input:
+      query: "完全不存在的主题 xyzzy"
+    expect:
+      answer_contains: "没有找到"
+      citations: []

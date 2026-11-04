@@ -1,0 +1,26 @@
+---
+# 平台镜像之外的离线产物：SeaTunnel 发行包 + 连接器 + JDBC 驱动。
+# 同步 Job 挂的是这几个 hostPath，节点重建后必须补回来，否则 Job 卡 ContainerCreating。
+- name: 建 SeaTunnel 目录
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /tmp/seatunnel-2.3.13
+    - /tmp/seatunnel-connectors
+    - /tmp/seatunnel-connectors/jdbc-lib
+
+- name: 解压 SeaTunnel 发行包
+  ansible.builtin.unarchive:
+    src: "{{ deploy_dir }}/artifacts/seatunnel/seatunnel-dist.tgz"
+    dest: /tmp/seatunnel-2.3.13
+    remote_src: false
+    creates: /tmp/seatunnel-2.3.13/lib
+
+- name: 解压连接器与 JDBC 驱动
+  ansible.builtin.unarchive:
+    src: "{{ deploy_dir }}/artifacts/seatunnel/seatunnel-connectors.tgz"
+    dest: /tmp/seatunnel-connectors
+    remote_src: false
+    creates: /tmp/seatunnel-connectors/plugin-mapping.properties

@@ -1,0 +1,167 @@
+# Doris 只读元数据账号：dw_meta_ro@'%'（幂等 Job）
+#
+# 用途：Gravitino 的 Doris catalog（doris_dev）只做元数据读取，不应该复用
+# 业务账号 dataworks（它有 ALL）。这里单独建一个只授 SELECT_PRIV 的账号，
+# 供元数据通道使用。业务账号的查询/Spark/MCP 使用点全部不动。
+#
+# 为什么必须是 hostNetwork Job：
+#   Doris root 只允许 127.0.0.1 免密，只有 FE 所在节点（dw-k8s-1）的
+#   hostNetwork Pod 才能以 root 执行 CREATE USER / GRANT。Job 自带重试、
+#   日志和 TTL，失败后可以回看，比手工 exec 可审计。
+#
+# 账号 host 为什么是 '%'（2026-11-03 BUG-META-GRAV-CRED-1 改，原为 '10.42.%'）：
+#   原假设「Pod 连 Doris 时 client IP 形如 10.42.x」在现网不成立：doris-fe 以
+#   hostNetwork 跑在 dw-k8s-1（Pod IP=首节点 IP），其它节点 Pod 经
+#   flannel 访问时源被 SNAT 成本节点 IP（实测报错源=第二节点 IP，
+#   即 dw-k8s-2 节点 IP）。'10.42.%' 会拒绝 Gravitino 与后端的元数据连接——
+#   这是 A13 元数据面持续降级的根因之一（另一半是 Gravitino catalog 持有
+#   轮换前旧口令）。'%' 与既有账号 root/admin/dataworks 同一惯例；该账号的
+#   真实安全边界是只授 SELECT_PRIV（REVOKE ALL 先行），不是源地址匹配。
+#   旧行 'dw_meta_ro'@'10.42.%' 由本卡收口时一次性 DROP（见证据文档），
+#   避免旧口令行残留成第二认证路径。
+#
+# 可重复 apply 的做法（Job.spec.template 是不可变字段，直接 apply 会报
+#   "spec.template: Invalid value: field is immutable"）：
+#   A. 固定名 + 先删后建 —— scripts/ops/doris-meta-ro.sh 采用：
+#        kubectl -n dw-dev delete job doris-meta-ro --ignore-not-found
+#        kubectl apply -f deploy/k8s/20-doris-meta-ro.yaml
+#   B. 纯 apply 场景给 Job 名加版本后缀（doris-meta-ro-v1 → doris-meta-ro-v2），
+#      旧 Job 靠 ttlSecondsAfterFinished 自动回收。
+#   注意：只 apply 不删不会重跑 —— 同名 Job 已 Complete 时 apply 是 no-op。
+#
+# 密码不写进清单：从 Secret doris-meta-ro-credentials 注入
+#   DORIS_META_RO_USER / DORIS_META_RO_PASSWORD，只在容器内展开到 stdin 的 SQL，
+#   不出现在任何进程 argv 和日志里。
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: doris-meta-ro-sql
+  namespace: dw-dev
+  labels:
+    app: doris-meta-ro
+data:
+  # __USER__ / __HOST__ / __PASSWORD__ 由 Job 容器用 bash 参数展开替换，
+  # 不经过 sed/awk（避免密码出现在子进程 argv 里）。
+  setup.sql: |
+    CREATE USER IF NOT EXISTS '__USER__'@'__HOST__' IDENTIFIED BY '__PASSWORD__';
+    ALTER USER '__USER__'@'__HOST__' IDENTIFIED BY '__PASSWORD__';
+    REVOKE ALL PRIVILEGES ON *.* FROM '__USER__'@'__HOST__';
+    GRANT SELECT_PRIV ON *.* TO '__USER__'@'__HOST__';
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: doris-meta-ro
+  namespace: dw-dev
+  labels:
+    app: doris-meta-ro
+spec:
+  # 1 小时后自动清理；脚本每次先 delete 再 apply，所以 TTL 不会影响重跑。
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: doris-meta-ro
+    spec:
+      restartPolicy: Never
+      # 与 doris-fe 同节点、同 hostNetwork，才能用 127.0.0.1 + root 免密。
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-1
+      automountServiceAccountToken: false
+      containers:
+        - name: setup
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              : "${DORIS_META_RO_USER:?DORIS_META_RO_USER 未注入}"
+              : "${DORIS_META_RO_PASSWORD:?DORIS_META_RO_PASSWORD 未注入}"
+              META_HOST="${DORIS_META_RO_HOST:-%}"
+
+              # MySQL 字符串字面量里 ' 和 \ 需要转义，随机密码又是纯字母数字；
+              # 宁可在这里明确拒绝，也不要写出一个语义被改掉的 CREATE USER。
+              # 注意：[[ ]] 里不要用行尾 \ 续行（bash 会报 unexpected token）。
+              has_forbidden() {
+                [[ "$1" == *"'"* || "$1" == *\\* || "$1" == *$'\n'* ]]
+              }
+              if has_forbidden "$DORIS_META_RO_PASSWORD"; then
+                echo "密码含单引号/反斜杠/换行，拒绝写入 SQL；请改用字母数字密码"
+                exit 2
+              fi
+              if has_forbidden "$DORIS_META_RO_USER"; then
+                echo "用户名含单引号/反斜杠/换行，拒绝写入 SQL"
+                exit 2
+              fi
+
+              echo "== 目标账号 ${DORIS_META_RO_USER}@${META_HOST}（密码 ${#DORIS_META_RO_PASSWORD} 位，不打印）"
+              sql="$(cat /sql/setup.sql)"
+              sql="${sql//__USER__/$DORIS_META_RO_USER}"
+              sql="${sql//__HOST__/$META_HOST}"
+              sql="${sql//__PASSWORD__/$DORIS_META_RO_PASSWORD}"
+              umask 077
+              printf '%s\n' "$sql" > /tmp/setup.sql
+              echo "== 执行建号/改密/收权/授权（--force：不存在的权限回收不阻断）"
+              mysql --default-character-set=utf8mb4 -h 127.0.0.1 -P 9030 -u root \
+                --force < /tmp/setup.sql
+              rm -f /tmp/setup.sql
+
+              # --force 也会吞掉真正的失败，所以用 SHOW GRANTS 做结构化校验：
+              # 必须是 SELECT_PRIV，且不能有写/管理类权限。
+              echo "== 校验 SHOW GRANTS"
+              grants="$(mysql --default-character-set=utf8mb4 -h 127.0.0.1 -P 9030 -u root \
+                -N -B -e "SHOW GRANTS FOR '${DORIS_META_RO_USER}'@'${META_HOST}'")"
+              printf '%s\n' "$grants"
+              [ -n "$grants" ] || { echo "SHOW GRANTS 为空：账号可能没建成"; exit 1; }
+              printf '%s\n' "$grants" | grep -q 'Select_priv' \
+                || { echo "缺少 Select_priv"; exit 1; }
+              if printf '%s\n' "$grants" | grep -Eqi \
+                'Load_priv|Alter_priv|Create_priv|Drop_priv|Grant_priv|Admin_priv|Node_priv|Show_view_priv'; then
+                echo "账号存在额外权限（写/管理类），拒绝放行"; exit 1
+              fi
+              # 登录验证不在 hostNetwork Job 里做：这里连 127.0.0.1 的源 IP 是
+              # 127.0.0.1，不代表真实网络路径（Pod→FE 经 SNAT 为节点 IP）。
+              # 功能验收由 scripts/ops/doris-meta-ro.sh 从 Pod 网络
+              # （kubectl exec deploy/mcp）发起。
+              echo "== OK：账号与权限已收敛为 SELECT_PRIV（登录验收见 doris-meta-ro.sh）"
+          env:
+            - name: DORIS_META_RO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-meta-ro-credentials
+                  key: DORIS_META_RO_USER
+            - name: DORIS_META_RO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-meta-ro-credentials
+                  key: DORIS_META_RO_PASSWORD
+            - name: DORIS_META_RO_HOST
+              value: "%"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: sql
+          configMap:
+            name: doris-meta-ro-sql
+        - name: tmp
+          emptyDir: {}

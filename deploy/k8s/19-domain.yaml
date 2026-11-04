@@ -1,0 +1,32 @@
+# 平台入口：data-ai-agent.com 经 Traefik(80) 转发到后端 8080。
+# IP 变化时只需改本机/内网 hosts 里 data-ai-agent.com 的解析，或改 DNS A 记录，
+# Ingress 本身不用动（按 Host 名匹配，不绑定具体节点 IP）。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: data-ai-agent
+  namespace: dw-dev
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    - host: data-ai-agent.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dataworks-backend
+                port:
+                  number: 8080
+    - host: www.data-ai-agent.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dataworks-backend
+                port:
+                  number: 8080

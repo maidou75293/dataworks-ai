@@ -1,0 +1,402 @@
+# 系统监控 P0+P1：node-exporter、Prometheus 规则、Alertmanager
+# kube-state-metrics 用后端 /api/internal/metrics/k8s 替代（DEV 拉不到 registry.k8s.io）。
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: dw-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dw-prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "nodes/proxy", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dw-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dw-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: dw-dev
+---
+# 后端读取 Node 状态（Pod / Deployment 已由 namespace Role 授权）
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dw-backend-nodes
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dw-backend-nodes
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dw-backend-nodes
+subjects:
+  - kind: ServiceAccount
+    name: dataworks-backend
+    namespace: dw-dev
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: dw-dev
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: dw-dev
+data:
+  system-alerts.yml: |
+    groups:
+      - name: dataworks-system
+        rules:
+          - alert: NodeDown
+            expr: up{job="node-exporter"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "节点监控失联：{{ $labels.node }}"
+              description: "node-exporter 已连续 2 分钟无法抓取，节点可能宕机或 kubelet 异常。"
+
+          # 指标导出本身坏了必须能报警：以前 dataworks-k8s 抓取 401 持续数小时，
+          # up 目标 down 却没有任何规则，依赖 dw_* 的五条告警全部静默失效。
+          - alert: K8sMetricsDown
+            expr: up{job="dataworks-k8s"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "平台 K8s 指标导出不可用"
+              description: "Prometheus 抓取 /api/internal/metrics/k8s 失败，Pod / Deployment / NodeReady 指标缺失，相关告警不会触发。检查后端内部 Token 与接口状态。"
+
+          - alert: K8sSnapshotFailed
+            expr: dw_snapshot_ok == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "K8s 快照读取失败"
+              description: "后端可被抓取，但读取 K8s API 失败（ServiceAccount 权限或 API Server 异常），本次抓取没有 Pod/节点数据。"
+
+          - alert: NodeNotReady
+            expr: dw_node_ready == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "节点未就绪：{{ $labels.node }}"
+              description: "K8s Node Ready 条件为 False。"
+
+          - alert: NodeDiskHigh
+            expr: |
+              100 * (1 - node_filesystem_avail_bytes{job="node-exporter",mountpoint="/",fstype!~"tmpfs|overlay|squashfs"}
+                      / node_filesystem_size_bytes{job="node-exporter",mountpoint="/",fstype!~"tmpfs|overlay|squashfs"}) > 85
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "节点磁盘使用率超过 85%：{{ $labels.node }}"
+              description: "当前使用率 {{ printf \"%.1f\" $value }}%。K3s 在 85% 会开始回收镜像。"
+
+          - alert: NodeMemoryHigh
+            expr: |
+              100 * (1 - node_memory_MemAvailable_bytes{job="node-exporter"}
+                      / node_memory_MemTotal_bytes{job="node-exporter"}) > 90
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "节点内存使用率超过 90%：{{ $labels.node }}"
+              description: "当前使用率 {{ printf \"%.1f\" $value }}%。"
+
+          - alert: PodNotReady
+            expr: |
+              (dw_pod_phase{phase="Running"} == 1)
+              and on (pod, namespace) (dw_pod_ready == 0)
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod 长时间未就绪：{{ $labels.pod }}"
+              description: "Pod 处于 Running 但容器未全部 Ready 超过 10 分钟。"
+
+          - alert: PodCrashLooping
+            expr: increase(dw_pod_restarts[10m]) > 3
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod 反复重启：{{ $labels.pod }}"
+              description: "10 分钟内重启次数增加 {{ printf \"%.0f\" $value }} 次。"
+
+          - alert: DeploymentUnavailable
+            expr: dw_deployment_unavailable > 0
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "工作负载副本不足：{{ $labels.deployment }}"
+              description: "有 {{ printf \"%.0f\" $value }} 个副本不可用。"
+
+          - alert: BackendDown
+            expr: up{job="dataworks-backend"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "平台后端不可用"
+              description: "Prometheus 已连续 2 分钟无法抓取 dataworks-backend。"
+
+          - alert: DorisBEDown
+            expr: up{job="doris-be"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Doris BE 失联：{{ $labels.instance }}"
+              description: "BE 指标无法抓取，查询可能失败。"
+
+          - alert: DorisFEDown
+            expr: up{job="doris-fe"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Doris FE 失联"
+              description: "FE 指标无法抓取，Doris 查询入口可能不可用。"
+
+          - alert: PostgresDown
+            expr: dw_pod_ready{pod="postgres-0"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "PostgreSQL 未就绪"
+              description: "平台元数据库 postgres-0 已连续 2 分钟未 Ready。"
+
+          - alert: SeatunnelNodeDown
+            expr: up{job="seatunnel"} == 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "SeaTunnel 节点失联：{{ $labels.instance }}"
+              description: "Prometheus 已连续 2 分钟无法抓取该引擎节点的 /metrics。"
+
+          - alert: SeatunnelClusterNodeCountLow
+            expr: min(node_count{job="seatunnel"}) < 3
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "SeaTunnel 集群节点数不足 3"
+              description: "当前引擎自报节点数 {{ printf \"%.0f\" $value }}，低于最小集群 3 节点。"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: dw-dev
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      receiver: platform
+      group_by: ["alertname", "node", "pod"]
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 4h
+
+    receivers:
+      - name: platform
+        webhook_configs:
+          - url: http://dataworks-backend.dw-dev.svc.cluster.local:8080/api/internal/alerts/alertmanager
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager-token/token
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: dw-dev
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: node-exporter
+          image: ${DW_REGISTRY}/library/node-exporter:dev
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/node_exporter"]
+          args:
+            - --path.procfs=/host/proc
+            - --path.sysfs=/host/sys
+            - --path.rootfs=/host/root
+            - --web.listen-address=0.0.0.0:9100
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/kubelet/.+)($|/)
+          ports:
+            - name: metrics
+              containerPort: 9100
+              hostPort: 9100
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: root
+              mountPath: /host/root
+              readOnly: true
+              mountPropagation: HostToContainer
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: root
+          hostPath:
+            path: /
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: dw-dev
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: ${DW_REGISTRY}/library/alertmanager:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/alertmanager
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/data
+          ports:
+            - name: http
+              containerPort: 9093
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9093
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9093
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+            - name: token
+              mountPath: /etc/alertmanager-token/token
+              subPath: token
+              readOnly: true
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        - name: token
+          secret:
+            secretName: platform-keys
+            items:
+              - key: PLATFORM_INTERNAL_TOKEN
+                path: token
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: dw-dev
+  labels:
+    app: alertmanager
+spec:
+  type: ClusterIP
+  selector:
+    app: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093

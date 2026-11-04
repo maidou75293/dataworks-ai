@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-catalog-browse",
+  "module": "catalog",
+  "title": "数据目录浏览",
+  "goal": "列出目录里真实存在的表并去重；说明目录来自血缘聚合、不代表数据库全部对象。",
+  "source": "docs/表管理-D14-D27-验收-20261026.md",
+  "steps": [
+    {"n": 1, "action": "按关键字列目录表（血缘边聚合去重）", "tool": "list_catalog_tables",
+     "expect": "tables 数组"},
+    {"n": 2, "action": "需要库级完整清单时按目录层级列", "tool": "catalog.list_tables",
+     "expect": "指定 schema 下表清单"},
+    {"n": 3, "action": "口径说明：目录范围与数据库对象的差异", "tool": "catalog.list_schemas",
+     "expect": "可列出的 schema 范围"}
+  ],
+  "failWhen": [
+    {"if": "用户要数据库全部对象", "then": "说明本阶段目录不含未进血缘的对象，完整清单需到表管理页"},
+    {"if": "用户问字段详情", "then": "说明目录条目不含字段，转表结构详情链"},
+    {"if": "关键字无结果", "then": "说目录中无匹配表，建议换词，不列相近表冒充"}
+  ]
+}

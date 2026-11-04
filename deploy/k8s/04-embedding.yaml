@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding
+  namespace: dw-dev
+  labels:
+    app: embedding
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: embedding
+  template:
+    metadata:
+      labels:
+        app: embedding
+    spec:
+      containers:
+        - name: embedding
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/embedding/venv/bin/uvicorn
+            - embed_server:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --app-dir
+            - /opt/embedding/app
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: app
+              mountPath: /opt/embedding/app
+      volumes:
+        - name: app
+          configMap:
+            name: embedding-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: embedding
+  namespace: dw-dev
+  labels:
+    app: embedding
+spec:
+  selector:
+    app: embedding
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

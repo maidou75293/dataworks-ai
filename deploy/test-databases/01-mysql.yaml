@@ -1,0 +1,90 @@
+# 部署：`bash deploy.sh testdb` 走 Ansible 自动渲染占位；手工 kubectl 先渲染再应用：
+#   sed 's|${DW_REGISTRY}|<你的仓库>|g' deploy/test-databases/01-mysql.yaml | k3s kubectl apply -f -
+#（${DW_REGISTRY}/${DW_NODE1}=仓内零内网 IP 占位，REQ-OSS-PUBSCRUB-1；取值见 deploy/env.local.sh.example）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init
+  namespace: dataworks-test-mysql
+data:
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS sync_test;
+    USE sync_test;
+    CREATE TABLE IF NOT EXISTS assets (
+      id INT PRIMARY KEY,
+      name VARCHAR(64) NOT NULL,
+      asset_type VARCHAR(16) NOT NULL,
+      size_bytes BIGINT NOT NULL
+    );
+    INSERT INTO assets (id, name, asset_type, size_bytes) VALUES
+      (1, 'demo-image', 'IMAGE', 1024),
+      (2, 'demo-audio', 'AUDIO', 2048),
+      (3, 'demo-video', 'VIDEO', 4096);
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: dataworks-test-mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: dataworks-test-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      # mysql:8.0 用于 MySQL-CDC：8.4 移除了 SHOW MASTER STATUS，Debezium 1.x 不兼容。
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-3
+      containers:
+        - name: mysql
+          image: ${DW_REGISTRY}/library/mysql:8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --server-id=223344
+            - --log-bin=mysql-bin
+            - --binlog-format=ROW
+            - --binlog-row-image=FULL
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: test123
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+            - name: MYSQL_DATABASE
+              value: sync_test
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: init
+          configMap:
+            name: mysql-init
+        - name: data
+          emptyDir: {}

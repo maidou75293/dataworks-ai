@@ -1,0 +1,1943 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-tools
+  namespace: dw-dev
+data:
+  catalog.describe_fileset.schema.json: |
+    {
+      "name": "catalog.describe_fileset",
+      "version": "1.0",
+      "description": "查看文件集的类型、存储位置与属性；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "fileset": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog",
+          "schema",
+          "fileset"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "fileset": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "storageLocation": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "properties": {
+            "type": "object"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "catalog.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CATALOG_UNAVAILABLE",
+          "CATALOG_OBJECT_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "catalog": "minio_fileset",
+            "schema": "kb",
+            "fileset": "docs"
+          },
+          "output": {
+            "catalog": "minio_fileset",
+            "schema": "kb",
+            "fileset": "docs",
+            "type": "managed",
+            "storageLocation": "s3a://dataworks-dev/kb/docs",
+            "comment": "kb documents",
+            "properties": {}
+          }
+        }
+      ]
+    }
+  catalog.describe_table.schema.json: |
+    {
+      "name": "catalog.describe_table",
+      "version": "1.0",
+      "description": "查看表的字段、类型与属性（来自 Gravitino 元数据）；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog",
+          "schema",
+          "table"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "nullable": {
+                  "type": "boolean"
+                },
+                "comment": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "properties": {
+            "type": "object"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "catalog.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CATALOG_UNAVAILABLE",
+          "CATALOG_OBJECT_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "catalog": "doris_dev",
+            "schema": "kb_dev",
+            "table": "kb_chunk"
+          },
+          "output": {
+            "catalog": "doris_dev",
+            "schema": "kb_dev",
+            "table": "kb_chunk",
+            "comment": "",
+            "columns": [
+              {
+                "name": "chunk_id",
+                "type": "long",
+                "nullable": false,
+                "comment": ""
+              }
+            ],
+            "properties": {}
+          }
+        }
+      ]
+    }
+  catalog.list.schema.json: |
+    {
+      "name": "catalog.list",
+      "version": "1.0",
+      "description": "列出 Gravitino metalake 下的 catalog（数据源目录）；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "metalake": {
+            "type": "string"
+          },
+          "catalogs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "catalog.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CATALOG_UNAVAILABLE"
+        ]
+      },
+      "examples": [
+        {
+          "input": {},
+          "output": {
+            "metalake": "dataworks",
+            "catalogs": [
+              "doris_dev",
+              "minio_fileset"
+            ]
+          }
+        }
+      ]
+    }
+  catalog.list_filesets.schema.json: |
+    {
+      "name": "catalog.list_filesets",
+      "version": "1.0",
+      "description": "列出 FILESET catalog 下某个 schema 的文件集（对象存储目录）；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog",
+          "schema"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "filesets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "catalog.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CATALOG_UNAVAILABLE",
+          "CATALOG_OBJECT_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "catalog": "minio_fileset",
+            "schema": "kb"
+          },
+          "output": {
+            "catalog": "minio_fileset",
+            "schema": "kb",
+            "filesets": [
+              "docs"
+            ]
+          }
+        }
+      ]
+    }
+  catalog.list_schemas.schema.json: |
+    {
+      "name": "catalog.list_schemas",
+      "version": "1.0",
+      "description": "列出指定 catalog 下的 schema（库）；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schemas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "catalog.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CATALOG_UNAVAILABLE",
+          "CATALOG_OBJECT_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "catalog": "doris_dev"
+          },
+          "output": {
+            "catalog": "doris_dev",
+            "schemas": [
+              "kb_dev",
+              "mysql"
+            ]
+          }
+        }
+      ]
+    }
+  catalog.list_tables.schema.json: |
+    {
+      "name": "catalog.list_tables",
+      "version": "1.0",
+      "description": "列出指定 catalog.schema 下的表/文件集；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog",
+          "schema"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "catalog.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CATALOG_UNAVAILABLE",
+          "CATALOG_OBJECT_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "catalog": "doris_dev",
+            "schema": "kb_dev"
+          },
+          "output": {
+            "catalog": "doris_dev",
+            "schema": "kb_dev",
+            "tables": [
+              "kb_chunk"
+            ]
+          }
+        }
+      ]
+    }
+  data.query_metric.schema.json: |
+    {
+      "name": "data.query_metric",
+      "version": "1.0",
+      "description": "按指标查询已发布数据服务；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "default": 50
+          },
+          "metric": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "columns": {
+            "type": "array"
+          },
+          "rows": {
+            "type": "array"
+          },
+          "rowCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "服务已发布并绑定数据源"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "data.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "code": "sales_daily",
+            "metric": "gmv"
+          },
+          "output": {
+            "rowCount": 10
+          }
+        }
+      ]
+    }
+  data.query_page.schema.json: |
+    {
+      "name": "data.query_page",
+      "version": "1.0",
+      "description": "分页查询已发布数据服务；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "columns": {
+            "type": "array"
+          },
+          "rows": {
+            "type": "array"
+          },
+          "rowCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "服务已发布并绑定数据源"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "data.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "code": "sales_daily",
+            "page": 2,
+            "pageSize": 50
+          },
+          "output": {
+            "rowCount": 10
+          }
+        }
+      ]
+    }
+  data.query_time.schema.json: |
+    {
+      "name": "data.query_time",
+      "version": "1.0",
+      "description": "按时间范围查询已发布数据服务；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "default": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "default": 50
+          },
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "columns": {
+            "type": "array"
+          },
+          "rows": {
+            "type": "array"
+          },
+          "rowCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "服务已发布并绑定数据源"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "data.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "code": "sales_daily",
+            "start": "2026-10-01",
+            "end": "2026-10-20"
+          },
+          "output": {
+            "rowCount": 10
+          }
+        }
+      ]
+    }
+  doris.sql_query.schema.json: |
+    {
+      "name": "doris.sql_query",
+      "version": "1.0",
+      "description": "执行只读 SQL（仅 SELECT/WITH），限制行数；用于受控分析。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string"
+          },
+          "max_rows": {
+            "type": "integer",
+            "default": 100,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "sql"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array"
+            }
+          },
+          "row_count": {
+            "type": "integer"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "user.authorized"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "doris.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "SQL_NOT_READ_ONLY",
+          "SQL_ERROR",
+          "DORIS_TIMEOUT"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "sql": "SELECT COUNT(*) FROM kb_dev.kb_chunk",
+            "max_rows": 10
+          },
+          "output": {
+            "columns": [
+              "count"
+            ],
+            "rows": [
+              [
+                100
+              ]
+            ],
+            "row_count": 1
+          }
+        }
+      ]
+    }
+  embed.query.schema.json: |
+    {
+      "name": "embed.query",
+      "version": "1.0",
+      "description": "把文本转成 512 维归一化向量；只读、幂等。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "texts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64
+          },
+          "is_query": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "texts"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "dim": {
+            "type": "integer"
+          },
+          "embeddings": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "embedding.ready"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "embed.use"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "EMBEDDING_UNAVAILABLE",
+          "TOO_MANY_TEXTS"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "texts": [
+              "报销标准是多少？"
+            ],
+            "is_query": true
+          },
+          "output": {
+            "dim": 512,
+            "embeddings": [
+              [
+                0.01,
+                0.02
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  graph.get_node.schema.json: |
+    {
+      "name": "graph.get_node",
+      "version": "1.0",
+      "description": "按 id 取提示词图谱节点的完整定义；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "graph.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "NODE_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "id": "kb.search"
+          },
+          "output": {
+            "id": "kb.search",
+            "version": 1,
+            "title": "知识库语义检索"
+          }
+        }
+      ]
+    }
+  graph.search.schema.json: |
+    {
+      "name": "graph.search",
+      "version": "1.0",
+      "description": "按关键词/意图检索提示词图谱节点；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "intent": {
+                  "type": "string"
+                },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "graph.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "GRAPH_UNAVAILABLE"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "query": "知识库检索",
+            "limit": 3
+          },
+          "output": {
+            "nodes": [
+              {
+                "id": "kb.search",
+                "title": "知识库语义检索",
+                "intent": "...",
+                "tools": [
+                  "embed.query",
+                  "doris.vector_search"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  kb.delete.schema.json: |
+    {
+      "name": "kb.delete",
+      "version": "1.0",
+      "description": "使一篇文档的指定版本失效或物理删除；破坏性操作，必须人工审批。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kb_id": {
+            "type": "integer"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "hard": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "kb_id",
+          "doc_id",
+          "version"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "deleted_chunks": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "doc.exists",
+          "user.authorized"
+        ],
+        "sideEffects": "marks is_current=false or deletes rows",
+        "idempotent": true,
+        "permissions": [
+          "kb.delete"
+        ],
+        "requiresApproval": true,
+        "errorCodes": [
+          "DOC_NOT_FOUND",
+          "APPROVAL_REQUIRED"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "kb_id": 1,
+            "doc_id": 1001,
+            "version": 1,
+            "hard": false
+          },
+          "output": {
+            "doc_id": 1001,
+            "version": 1,
+            "deleted_chunks": 12,
+            "mode": "soft"
+          }
+        }
+      ]
+    }
+  kb.get_chunk.schema.json: |
+    {
+      "name": "kb.get_chunk",
+      "version": "1.0",
+      "description": "按 chunk_id 取回原始片段与元数据；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "chunk_id": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chunk_id"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "chunk_id": {
+            "type": "integer"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "acl_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "user.authorized"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "kb.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "CHUNK_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "chunk_id": 42
+          },
+          "output": {
+            "chunk_id": 42,
+            "doc_id": 1001,
+            "title": "报销制度",
+            "content": "...",
+            "acl_tags": [
+              "finance"
+            ]
+          }
+        }
+      ]
+    }
+  kb.ingest.schema.json: |
+    {
+      "name": "kb.ingest",
+      "version": "1.0",
+      "description": "把一篇文档切块、生成 embedding 并写入 Doris 知识库；相同 (doc_id, version, chunk_no) 幂等覆盖。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kb_id": {
+            "type": "integer"
+          },
+          "doc_id": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer",
+            "default": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "acl_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "chunk_size": {
+            "type": "integer",
+            "default": 500
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": [
+          "kb_id",
+          "doc_id",
+          "content"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "doc_id": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "chunk_count": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id",
+          "version",
+          "chunk_count",
+          "status"
+        ]
+      },
+      "semantics": {
+        "preconditions": [
+          "kb.exists",
+          "user.authorized"
+        ],
+        "sideEffects": "writes kb_chunk rows",
+        "idempotent": true,
+        "permissions": [
+          "kb.write"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "KB_NOT_FOUND",
+          "EMBEDDING_UNAVAILABLE",
+          "DORIS_WRITE_FAILED"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "kb_id": 1,
+            "doc_id": 1001,
+            "version": 1,
+            "title": "报销制度",
+            "content": "...",
+            "acl_tags": [
+              "finance"
+            ]
+          },
+          "output": {
+            "doc_id": 1001,
+            "version": 1,
+            "chunk_count": 12,
+            "status": "ok"
+          }
+        }
+      ]
+    }
+  kb.search.schema.json: |
+    {
+      "name": "kb.search",
+      "version": "1.0",
+      "description": "语义检索知识库，返回 Top-K 片段与引用；只读，自动注入 ACL 过滤。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "kb_id": {
+            "type": "integer"
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 50
+          },
+          "acl_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "is_query": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chunk_id": {
+                  "type": "integer"
+                },
+                "doc_id": {
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "kb.exists",
+          "user.authorized"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "kb.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "KB_NOT_FOUND",
+          "EMBEDDING_UNAVAILABLE",
+          "DORIS_TIMEOUT"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "query": "报销标准是多少？",
+            "kb_id": 1,
+            "top_k": 5,
+            "acl_tags": [
+              "finance"
+            ]
+          },
+          "output": {
+            "results": [
+              {
+                "chunk_id": 42,
+                "doc_id": 1001,
+                "title": "报销制度",
+                "content": "...",
+                "score": 0.91
+              }
+            ]
+          }
+        }
+      ]
+    }
+  platform.create_task.schema.json: |
+    {
+      "name": "platform.create_task",
+      "version": "1.0",
+      "description": "创建同步任务（不自动运行）。必须先向用户说明影响并 confirm=true。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "projectId": {
+            "type": "integer",
+            "default": 1
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sourceType": {
+            "type": "string"
+          },
+          "sourceConfig": {
+            "type": "object",
+            "description": "源端配置。可含 params 数组声明运行参数：[{name,type,required,default,description}]，SQL 用 ${name} 引用；type 支持 string/int/long/number/bool/date/datetime/ident（动态表名必须用 ident）。格式见 docs/数据集成-运行参数声明.md"
+          },
+          "sinkType": {
+            "type": "string"
+          },
+          "sinkConfig": {
+            "type": "object",
+            "description": "目标配置。MongoDB-CDC 接 JDBC 汇时 primary_keys 必须用 [\"_id\"]：change stream 的 DELETE 事件只带 _id，用业务 id 做主键时删除不会传播。"
+          },
+          "jobMode": {
+            "type": "string",
+            "enum": [
+              "BATCH",
+              "STREAMING"
+            ]
+          },
+          "parallelism": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirm",
+          "code",
+          "name",
+          "sourceType",
+          "sourceConfig",
+          "sinkType",
+          "sinkConfig"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "连接器状态 READY",
+          "用户已确认"
+        ],
+        "sideEffects": "insert platform.sync_task",
+        "idempotent": false,
+        "permissions": [
+          "platform.write"
+        ],
+        "requiresConfirmation": true,
+        "errorCodes": [
+          "CONFIRM_REQUIRED",
+          "INTERNAL_TOKEN_INVALID",
+          "TASK_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "confirm": true,
+            "code": "kafka_to_mysql"
+          },
+          "output": {
+            "ok": true,
+            "id": 300
+          }
+        }
+      ]
+    }
+  platform.get_task_status.schema.json: |
+    {
+      "name": "platform.get_task_status",
+      "version": "1.0",
+      "description": "按任务 id 或编码查询最近一次运行状态（含 k8s Job 实时状态）；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "integer",
+            "default": 1
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "last_status": {
+            "type": "string"
+          },
+          "jobLiveStatus": {
+            "type": "string"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "任务已存在"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "platform.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "code": "inc_pg"
+          },
+          "output": {
+            "last_status": "SUCCESS",
+            "jobLiveStatus": "GONE"
+          }
+        }
+      ]
+    }
+  platform.lineage.schema.json: |
+    {
+      "name": "platform.lineage",
+      "version": "1.0",
+      "description": "查询表/字段血缘边；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "env": {
+            "type": "string",
+            "enum": [
+              "DEV",
+              "PROD"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "已有血缘数据"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "platform.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "table": "sync_test"
+          },
+          "output": {
+            "count": 4
+          }
+        }
+      ]
+    }
+  platform.list_datasources.schema.json: |
+    {
+      "name": "platform.list_datasources",
+      "version": "1.0",
+      "description": "列出当前项目的数据源；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "default": 1
+          },
+          "type": {
+            "type": "string"
+          },
+          "keyword": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "datasources": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "项目内已有数据源"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "platform.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "type": "POSTGRESQL"
+          },
+          "output": {
+            "count": 1
+          }
+        }
+      ]
+    }
+  platform.list_tasks.schema.json: |
+    {
+      "name": "platform.list_tasks",
+      "version": "1.0",
+      "description": "按最近运行时间列出同步任务；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "default": 1
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "项目内已有同步任务"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "platform.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "status": "SUCCESS"
+          },
+          "output": {
+            "count": 3
+          }
+        }
+      ]
+    }
+  platform.quality.schema.json: |
+    {
+      "name": "platform.quality",
+      "version": "1.0",
+      "description": "查询质量规则最近结果；只读。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "default": 1
+          },
+          "table": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "已配置质量规则"
+        ],
+        "sideEffects": "none",
+        "idempotent": true,
+        "permissions": [
+          "platform.read"
+        ],
+        "requiresApproval": false,
+        "errorCodes": [
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "table": "workflow"
+          },
+          "output": {
+            "count": 2
+          }
+        }
+      ]
+    }
+  platform.request_change.schema.json: |
+    {
+      "name": "platform.request_change",
+      "version": "1.0",
+      "description": "生成删除、改配置、权限、调度或表结构变更申请；只落申请单，不执行任何变更。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "DELETE_TASK",
+              "DELETE_DATASOURCE",
+              "UPDATE_CONFIG",
+              "UPDATE_PERMISSION",
+              "UPDATE_SCHEDULE",
+              "ALTER_TABLE"
+            ],
+            "description": "申请类型"
+          },
+          "targetType": {
+            "type": "string",
+            "description": "对象类型，如 TASK / DATASOURCE / WORKFLOW"
+          },
+          "targetId": {
+            "type": "integer",
+            "description": "对象 id（删除任务/数据源时必填且必须存在）"
+          },
+          "targetName": {
+            "type": "string",
+            "description": "对象名称，便于审批人识别"
+          },
+          "reason": {
+            "type": "string",
+            "description": "申请原因（必填）"
+          },
+          "impact": {
+            "type": "string",
+            "description": "影响范围"
+          },
+          "rollback": {
+            "type": "string",
+            "description": "回滚方式"
+          }
+        },
+        "required": [
+          "type",
+          "reason"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "明确对象与影响范围",
+          "已填写原因与回滚方式"
+        ],
+        "sideEffects": "insert platform.agent_change_request（PENDING_APPROVAL）",
+        "idempotent": false,
+        "permissions": [
+          "platform.write"
+        ],
+        "requiresApproval": true,
+        "errorCodes": [
+          "TARGET_NOT_FOUND",
+          "INVALID_CHANGE_TYPE",
+          "INTERNAL_TOKEN_INVALID"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "type": "DELETE_TASK",
+            "targetType": "TASK",
+            "targetId": 289,
+            "targetName": "chat_kafka_mysql_1020041644",
+            "reason": "临时验证任务，已停止",
+            "impact": "不再出现在任务列表；历史运行记录保留",
+            "rollback": "可从申请单恢复任务配置"
+          },
+          "output": {
+            "ok": true,
+            "id": 1,
+            "status": "PENDING_APPROVAL"
+          }
+        }
+      ]
+    }
+  platform.run_task.schema.json: |
+    {
+      "name": "platform.run_task",
+      "version": "1.0",
+      "description": "运行指定同步任务。必须先向用户说明影响并 confirm=true。运行参数以任务 sourceConfig.params 的声明为准：先读任务详情取 name/type/required/default，再按类型传值；未声明或缺必填会被拒绝。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "params": {
+            "type": "object",
+            "description": "运行时参数，键必须先在任务 sourceConfig.params 中声明；按声明类型传值（int/long/number/bool/date/datetime/ident），缺必填项应询问用户而不是猜。格式与错误见 docs/数据集成-运行参数声明.md"
+          }
+        },
+        "required": [
+          "confirm",
+          "id"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "jobName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "任务已存在",
+          "用户已确认"
+        ],
+        "sideEffects": "提交 k8s Job 并写目标端",
+        "idempotent": false,
+        "permissions": [
+          "platform.write"
+        ],
+        "requiresConfirmation": true,
+        "errorCodes": [
+          "CONFIRM_REQUIRED",
+          "INTERNAL_TOKEN_INVALID",
+          "TASK_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "id": 300,
+            "confirm": true
+          },
+          "output": {
+            "ok": true,
+            "jobName": "sync-kafka-to-mysql-..."
+          }
+        }
+      ]
+    }
+  platform.stop_task.schema.json: |
+    {
+      "name": "platform.stop_task",
+      "version": "1.0",
+      "description": "停止任务当前运行的作业。必须先向用户说明影响并 confirm=true。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirm",
+          "id"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "semantics": {
+        "preconditions": [
+          "任务已存在",
+          "用户已确认"
+        ],
+        "sideEffects": "删除 k8s Job，不回滚已写入数据",
+        "idempotent": false,
+        "permissions": [
+          "platform.write"
+        ],
+        "requiresConfirmation": true,
+        "errorCodes": [
+          "CONFIRM_REQUIRED",
+          "INTERNAL_TOKEN_INVALID",
+          "TASK_NOT_FOUND"
+        ]
+      },
+      "examples": [
+        {
+          "input": {
+            "id": 300,
+            "confirm": true
+          },
+          "output": {
+            "ok": true,
+            "deleted": true
+          }
+        }
+      ]
+    }

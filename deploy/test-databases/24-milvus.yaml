@@ -1,0 +1,85 @@
+# Milvus 2.4.9 standalone：嵌入式 etcd + 本地存储，避免额外 etcd/MinIO 依赖。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-milvus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: milvus-user
+  namespace: dataworks-test-milvus
+data:
+  user.yaml: |
+    etcd:
+      use:
+        embed: true
+      data:
+        dir: /var/lib/milvus/etcd
+    common:
+      storageType: local
+    localStorage:
+      path: /var/lib/milvus/data
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus
+  namespace: dataworks-test-milvus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: milvus
+  template:
+    metadata:
+      labels:
+        app: milvus
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-3
+      containers:
+        - name: milvus
+          image: docker.io/milvusdb/milvus:v2.4.9
+          imagePullPolicy: IfNotPresent
+          command: ["milvus", "run", "standalone"]
+          ports:
+            - containerPort: 19530
+              name: grpc
+            - containerPort: 9091
+              name: metrics
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/milvus
+            - name: user
+              mountPath: /milvus/configs/user.yaml
+              subPath: user.yaml
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: user
+          configMap:
+            name: milvus-user
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: milvus
+  namespace: dataworks-test-milvus
+spec:
+  selector:
+    app: milvus
+  ports:
+    - name: grpc
+      port: 19530
+      targetPort: 19530
+    - name: metrics
+      port: 9091
+      targetPort: 9091

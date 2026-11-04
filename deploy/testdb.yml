@@ -1,0 +1,38 @@
+---
+# 可选：部署测试库（当前只含 PostgreSQL，镜像节点已有）。
+# 用法：bash deploy.sh testdb
+- name: 测试库
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    testdb_manifests:
+      - test-databases/00-namespaces.yaml
+      - test-databases/04-postgres.yaml
+  tasks:
+    - name: 应用测试库清单
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        apply: true
+        # ${DW_REGISTRY}/${DW_NODE1}=仓内零内网 IP 占位（REQ-OSS-PUBSCRUB-1，同 50-platform.yml 手法）
+        definition: "{{ (lookup('file', deploy_dir ~ '/' ~ item)
+                         | replace('${DW_REGISTRY}', dw_registry)
+                         | replace('${DW_NODE1}', dw_node1_ip | trim))
+                        | from_yaml_all | list }}"
+      loop: "{{ testdb_manifests }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: 等测试 PG 就绪
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig_path }}"
+        kind: Deployment
+        namespace: dataworks-test-postgres
+      register: tpg
+      until: >-
+        (tpg.resources | length) > 0 and
+        (tpg.resources[0].status.availableReplicas | default(0) | int) >= 1
+      retries: 60
+      delay: 5
+      changed_when: false

@@ -1,0 +1,116 @@
+# ClickHouse + SSH sidecar：ClickhouseFile 汇需要 clickhouse-local 生成 part，
+# 再通过 SCP 把 part 拷到 ClickHouse 节点并 ATTACH。SCP 用户与 clickhouse 同 UID。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-clickhouse
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: dataworks-test-clickhouse
+spec:
+  selector:
+    app: clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000
+    - name: ssh
+      port: 22
+      targetPort: 22
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse
+  namespace: dataworks-test-clickhouse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-3
+      initContainers:
+        - name: init
+          image: docker.io/rancher/mirrored-library-busybox:1.37.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "mkdir -p /data && chmod 777 /data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: clickhouse
+          image: docker.io/clickhouse/clickhouse-server:24.8
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CLICKHOUSE_USER
+              value: default
+            - name: CLICKHOUSE_PASSWORD
+              value: test123
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          ports:
+            - containerPort: 8123
+            - containerPort: 9000
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: remote
+              mountPath: /etc/clickhouse-server/config.d/remote_servers.xml
+              subPath: remote_servers.xml
+        - name: sshd
+          image: docker.io/linuxserver/openssh-server:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PUID
+              value: "101"
+            - name: PGID
+              value: "101"
+            - name: USER_NAME
+              value: clickhouse
+            - name: USER_PASSWORD
+              value: test123
+            - name: PASSWORD_ACCESS
+              value: "true"
+            - name: SUDO_ACCESS
+              value: "false"
+            - name: LOG_STDOUT
+              value: "true"
+            - name: LISTEN_PORT
+              value: "22"
+          ports:
+            - containerPort: 22
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: remote
+          configMap:
+            name: ch-remote-servers

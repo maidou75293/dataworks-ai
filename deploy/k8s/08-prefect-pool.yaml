@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-pool-worker
+  namespace: dw-dev
+  labels:
+    app: prefect-pool-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-pool-worker
+  template:
+    metadata:
+      labels:
+        app: prefect-pool-worker
+    spec:
+      containers:
+        - name: worker
+          image: ${DW_REGISTRY}/library/prefect:3-dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/prefect/venv/bin/prefect
+            - worker
+            - start
+            - --pool
+            - platform
+          env:
+            - name: PREFECT_API_URL
+              value: http://prefect.dw-dev.svc.cluster.local:4200/api
+            - name: DW_DB_HOST
+              value: postgres.dw-dev.svc.cluster.local
+            - name: DW_DB_PORT
+              value: "5432"
+            - name: DW_DB_NAME
+              value: dataworks_dev
+            - name: DW_DB_USER
+              value: dataworks
+            - name: DW_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            # SQL 任务选 DORIS 时，Flow 用 pymysql 连这个地址
+            - name: DORIS_HOST
+              value: doris-fe.dw-dev.svc.cluster.local
+            - name: DORIS_PORT
+              value: "9030"
+            - name: DORIS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_USER
+            - name: DORIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_PASSWORD
+            # 质量闸门里 datasource=DORIS 的规则通过 MCP 执行
+            - name: BACKEND_URL
+              value: http://dataworks-backend.dw-dev.svc.cluster.local:8080
+            - name: PLATFORM_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: PLATFORM_INTERNAL_TOKEN
+            - name: MCP_URL
+              value: http://mcp.dw-dev.svc.cluster.local:8080
+            - name: MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-auth
+                  key: MCP_TOKEN
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: flows
+              mountPath: /opt/prefect/flows
+      volumes:
+        - name: flows
+          configMap:
+            name: prefect-flows

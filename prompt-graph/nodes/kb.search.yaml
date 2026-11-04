@@ -1,0 +1,35 @@
+id: kb.search
+version: 1
+title: 知识库语义检索
+intent: 用户想根据自然语言问题查找内部知识库内容，并拿到可追溯的引用
+tools:
+  - embed.query
+  - doris.sql_query
+  - kb.get_chunk
+preconditions:
+  - kb.exists
+  - user.authorized
+prompt: |
+  你是内部知识库检索助手。
+  1. 先判断问题是否需要检索；寒暄、纯计算、与知识库无关的问题直接回答，不调用工具。
+  2. 需要检索时，调用 embed.query，is_query=true，拿到 512 维归一化向量。
+  3. 用向量在 kb_chunk 中做 ANN 检索，必须带 kb_id 与 acl_tags 过滤，只取 is_current=true。
+  4. 只返回有权限的片段；每条结果必须带 chunk_id、doc_id、title 引用。
+  5. 检索结果为空时明确说“没有找到”，不要编造。
+examples:
+  - input: "报销标准是多少？"
+    expected_tools: [embed.query, doris.sql_query]
+    expected_output: "带 chunk_id/doc_id/title 的引用，score 降序"
+  - input: "你好"
+    expected_tools: []
+    expected_output: "直接问候，不检索"
+evals:
+  - case: "无权限文档不应出现"
+    assert: "response.citations 全部通过 acl_tags 过滤"
+  - case: "空结果不编造"
+    assert: "检索为空时回答包含“没有找到”，且 citations 为空"
+edges:
+  - to: kb.answer
+    when: "检索结果非空"
+  - to: kb.no_result
+    when: "检索结果为空"

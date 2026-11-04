@@ -1,0 +1,63 @@
+{
+  "name": "platform.get_task_status",
+  "version": "1.0",
+  "description": "按任务 id 或编码查询最近一次运行状态（含 k8s Job 实时状态）；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer"
+      },
+      "code": {
+        "type": "string"
+      },
+      "projectId": {
+        "type": "integer",
+        "default": 1
+      }
+    },
+    "required": []
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer"
+      },
+      "code": {
+        "type": "string"
+      },
+      "last_status": {
+        "type": "string"
+      },
+      "jobLiveStatus": {
+        "type": "string"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "任务已存在"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "platform.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "code": "inc_pg"
+      },
+      "output": {
+        "last_status": "SUCCESS",
+        "jobLiveStatus": "GONE"
+      }
+    }
+  ]
+}

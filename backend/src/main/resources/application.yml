@@ -1,0 +1,185 @@
+server:
+  port: ${SERVER_PORT:8080}
+  # 前端是单包 1.7MB + 接口 JSON 动辄几十 KB：不压缩时每次刷新都要全量重传。
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,text/plain,text/javascript,application/javascript,application/json,application/xml,image/svg+xml
+    min-response-size: 1024
+
+spring:
+  application:
+    name: dataworks-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:127.0.0.1}:${DB_PORT:30432}/${DB_NAME:dataworks_dev}
+    username: ${DB_USER:dataworks}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 5000
+  # UDF jar 上传：单文件 50MB（RequestSizeLimitFilter 对上传路径单独放行）
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
+  flyway:
+    enabled: true
+    # 迁移文件里的花括号占位符一律按字面量处理：SQL 注释里写占位符也会被 Flyway 当变量解析，
+    # V75 就因为注释里出现占位符直接起不来。平台不用 Flyway 变量。
+    placeholder-replacement: false
+    schemas: platform
+    default-schema: platform
+    create-schemas: true
+    locations: classpath:db/migration
+  task:
+    scheduling:
+      # Prefect 同步可能单轮阻塞几十秒；单线程会让同步任务调度/告警评估一起饿死
+      pool:
+        size: 4
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      # /actuator 不走登录鉴权：不要把数据库名、连接池等细节暴露给未登录调用方
+      show-details: never
+
+prefect:
+  bridge-url: ${PREFECT_BRIDGE_URL:http://127.0.0.1:30430}
+  namespace: ${PREFECT_NAMESPACE:dw-dev}
+  flows-configmap: ${PREFECT_FLOWS_CONFIGMAP:prefect-flows}
+  worker-deployment: ${PREFECT_WORKER_DEPLOYMENT:prefect-pool-worker}
+  restart-worker: ${PREFECT_RESTART_WORKER:true}
+
+mcp:
+  base-url: ${MCP_BASE_URL:http://mcp.dw-dev.svc.cluster.local:8080}
+  token: ${MCP_TOKEN:}
+
+# Gravitino 元数据（V101）：DORIS 数据源保存时同步注册 Catalog。
+# Catalog 名 = <tenant>_<slug(数据源名)>，provider 默认 jdbc-doris。
+gravitino:
+  base-url: ${GRAVITINO_URL:http://gravitino.dw-dev.svc.cluster.local:8090}
+  metalake: ${GRAVITINO_METALAKE:dataworks}
+  # 单次调用连接/读取超时；retries=1 表示最多 2 次（只对连接失败 / 5xx / 429 重试）
+  timeout-seconds: ${GRAVITINO_TIMEOUT_SECONDS:3}
+  retries: ${GRAVITINO_RETRIES:1}
+  doris-provider: ${GRAVITINO_DORIS_PROVIDER:jdbc-doris}
+  # 第二批：没有外置 DORIS 数据源的入口（内置 Doris / 老项目）读取哪个 Catalog。
+  # 指向 scripts/ops/gravitino-init.sh 创建的平台级 Catalog；置空 = 内置 Doris 也走直连。
+  builtin-catalog: ${GRAVITINO_BUILTIN_CATALOG:doris_dev}
+
+# 第二批：元数据读取（metadata.source=gravitino 时库/表/表结构走 Gravitino）。
+# 列表与表结构缓存 30–60 秒（代码里夹取，防止误配成 0 或过长）。
+metadata:
+  cache:
+    ttl-seconds: ${METADATA_CACHE_TTL_SECONDS:45}
+
+# 新建项目时创建对应的 Doris 库（业务_dev / 业务_prd）。
+# 只做建库，不接受前端 SQL；账号需要 internal catalog 的 CREATE 权限。
+doris:
+  host: ${DORIS_HOST:127.0.0.1}
+  port: ${DORIS_PORT:9030}
+  user: ${DORIS_USER:dataworks}
+  password: ${DORIS_PASSWORD:}
+  # 管理语句（CREATE CATALOG / GRANT / UDF）用管理员连接：业务账号没有 Admin_priv。
+  # 默认 root/空密码；生产请用 K8s Secret 覆盖 DORIS_ADMIN_PASSWORD。
+  admin-user: ${DORIS_ADMIN_USER:root}
+  admin-password: ${DORIS_ADMIN_PASSWORD:}
+  # 元数据通道（Gravitino 内置 Doris Catalog）专用只读账号：只有 SELECT_PRIV。
+  # 未配置时回落数据源业务账号（老集群兼容）；配置后数据源同步也不会把
+  # Catalog 凭据改回业务账号。见 scripts/ops/doris-meta-ro.sh。
+  meta-ro-user: ${DORIS_META_RO_USER:}
+  meta-ro-password: ${DORIS_META_RO_PASSWORD:}
+
+# 脚本引擎 SPARK：平台常驻 Spark Thrift Server（HiveServer2 协议）。
+# 节点 engine=SPARK 且未绑定独立数据源时走这里；绑定数据源时用数据源自己的连接。
+# 地址已在 JdbcUrlGuard 内置白名单里，改到别的主机时记得加 PLATFORM_EGRESS_ALLOW。
+spark:
+  thrift:
+    url: ${SPARK_THRIFT_URL:jdbc:hive2://spark-thrift.dw-spark.svc.cluster.local:10000/}
+    username: ${SPARK_THRIFT_USER:spark}
+    password: ${SPARK_THRIFT_PASSWORD:}
+    # 单条只读 SQL 的查询超时（秒），夹在 1–3600 之间
+    query-timeout-seconds: ${SPARK_THRIFT_QUERY_TIMEOUT_SECONDS:120}
+
+# Iceberg 湖 Catalog（V100）：由后端管理员连接下发 CREATE CATALOG，再授权给业务账号。
+lake:
+  # 平台业务账号在 Doris 里的用户（默认与 doris.user 相同）
+  grant-user: ${LAKE_GRANT_USER:${DORIS_USER:dataworks}}
+  # 探测超时；Iceberg 首次加载 S3 元数据可能较慢
+  probe-timeout-seconds: ${LAKE_PROBE_TIMEOUT_SECONDS:15}
+
+agent:
+  service-url: ${AGENT_SERVICE_URL:http://127.0.0.1:8097}
+  # agent-service 自己的入口凭证；未单独配置时沿用内部 token
+  service-token: ${AGENT_SERVICE_TOKEN:${platform.internal-token:}}
+
+platform:
+  admin-user: ${PLATFORM_ADMIN_USER:admin}
+  # 监控读取的命名空间（逗号分隔）。Spark Thrift Server 常驻 dw-spark，
+  # 只写 dw-dev 时监控页看不到它（2026-10-26 实际踩过）。
+  monitor:
+    namespaces: ${PLATFORM_MONITOR_NAMESPACES:dw-dev,dw-spark}
+  admin-password: ${PLATFORM_ADMIN_PASSWORD:admin}
+  session-hours: 12
+  # v450 P1-8：运行中超时（小时）。0 = 关闭；超时后取消 Prefect run 并落 FAILED
+  instance-timeout-hours: ${PLATFORM_INSTANCE_TIMEOUT_HOURS:24}
+  instance-timeout-scan-ms: 600000
+  # 敏感信息落盘加密（AES-256-GCM）；未配置时后端拒绝启动
+  secret-key: ${PLATFORM_SECRET_KEY:}
+  # Prefect Flow 运行时读取数据源连接信息的内部接口凭证
+  internal-token: ${PLATFORM_INTERNAL_TOKEN:}
+  # v471 G-P1-2：优先从挂载的 Secret 文件读（5s TTL 热更新），环境变量兜底。
+  # 部署时把 platform-keys/PLATFORM_INTERNAL_TOKEN 投到这个路径，轮换后无需重启。
+  internal-token-file: ${PLATFORM_INTERNAL_TOKEN_FILE:/etc/platform/internal-token}
+  internal-token-ttl-ms: ${PLATFORM_INTERNAL_TOKEN_TTL_MS:5000}
+  # 系统监控页读取 node-exporter 指标
+  prometheus-url: ${PROMETHEUS_URL:http://prometheus.dw-dev.svc.cluster.local:9090}
+  # 出网白名单（v448）：默认拒绝内网/集群地址，这里按 host、host:port 或 *.suffix 放行。
+  # 平台内置数据源与演示库；新增私网数据库时改这个环境变量，不要放开整段网段。
+  egress:
+    allow: ${PLATFORM_EGRESS_ALLOW:postgres.dataworks-test-postgres.svc.cluster.local,mysql84.dataworks-test-mysql.svc.cluster.local,mysql.dataworks-test-mysql.svc.cluster.local,kafka.dataworks-test-kafka.svc.cluster.local,*.dataworks-test-*.svc.cluster.local,kafka-demo.dw-dev.svc.cluster.local,doris-fe.dw-dev.svc.cluster.local,minio.dw-dev.svc.cluster.local,postgres.dw-dev.svc.cluster.local}
+  # REQ-UNIFY-1 ModelOneStation 桥接网关（/api/mos/**）：服务账号会话代持。
+  # 口令不写默认值——未配置时代理通道明确 503（凭据走 scripts/ops/secret.sh，契约 §6.2-2）；
+  # 出网白名单由 EgressPolicy 从 base-url 同源追加，这里改一处即可。
+  mos:
+    base-url: ${MOS_BASE_URL:http://127.0.0.1:30095}
+    username: ${MOS_SVC_USER:svc-dataworks}
+    password: ${MOS_SVC_PASSWORD:}
+    timeout-ms: ${MOS_TIMEOUT_MS:15000}
+  # S1（2026-10-26 扫描 P0）：平台元数据库的端点与库名。命中这些地址/库名的数据源一律 400，
+  # 工作流 SQL 节点也不允许再用 PG 这类保留字直连平台库。默认值取自 spring.datasource.url，
+  # 这里只补充「同一个库的其它入口」（NodePort / 备用 Service 名）。
+  internal-db:
+    endpoints: ${PLATFORM_INTERNAL_DB_ENDPOINTS:}
+    database-names: ${PLATFORM_INTERNAL_DB_DATABASE_NAMES:}
+  # 浏览器访问平台时使用的对外地址，用于拼接 Keycloak 回调 URL。
+  # 留空则从请求的 Host / X-Forwarded-* 推导。
+  public-url: ${PLATFORM_PUBLIC_URL:}
+  # 对象/文件目录（UDF jar、本地文件数据源的共享卷）
+  local-file-base: ${PLATFORM_LOCAL_FILE_BASE:/data/local}
+  # UDF：Doris BE / Flink TaskManager 能访问到的本服务地址（jar 下载）
+  udf:
+    jar-base-url: ${PLATFORM_UDF_JAR_BASE_URL:http://dataworks-backend.dw-dev.svc.cluster.local:8080}
+  # 只有部署在可信反向代理后面才设为 true；NodePort 直连时保持 false，
+  # 否则客户端可以伪造 X-Forwarded-For 绕过登录失败锁定。
+  trust-forwarded-for: ${PLATFORM_TRUST_FORWARDED_FOR:false}
+  sso:
+    # 默认只允许 source=SSO 的账号走单点登录；打开后本地预置账号也可被同名 SSO 接管
+    allow-local-account-binding: ${PLATFORM_SSO_ALLOW_LOCAL_BINDING:false}
+
+keycloak:
+  url: ${KEYCLOAK_URL:http://127.0.0.1:30081}
+  realm: ${KEYCLOAK_REALM:dataworks}
+  client-id: ${KEYCLOAK_SSO_CLIENT_ID:dataworks-web}
+  introspect-client-id: ${KEYCLOAK_INTROSPECT_CLIENT_ID:mcp-gateway}
+  introspect-client-secret: ${KEYCLOAK_INTROSPECT_CLIENT_SECRET:}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{requestId:-}] [%X{runId:-}] %logger{36} - %msg%n"
+  level:
+    com.lab.dataworks: INFO
+    org.flywaydb: INFO

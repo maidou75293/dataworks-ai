@@ -1,0 +1,257 @@
+# Apache SeaTunnel 2.3.13, Zeta engine, 3-node hybrid cluster (minimal HA).
+# - 发行包从节点 hostPath /tmp/seatunnel-2.3.13 挂到 /opt/seatunnel（不在镜像内）
+# - 连接器 JAR 仍从 /tmp/seatunnel-connectors 挂到 /opt/seatunnel/connectors
+# - 3 个 hybrid 节点（master+worker 同进程），Hazelcast 静态成员发现
+# - 开启 telemetry metric，Prometheus 抓取每 pod 的 :8080/metrics
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: seatunnel-config
+  namespace: dw-dev
+data:
+  seatunnel.yaml: |
+    seatunnel:
+      engine:
+        classloader-cache-mode: true
+        history-job-expire-minutes: 1440
+        backup-count: 1
+        queue-type: blockingqueue
+        print-execution-info-interval: 60
+        print-job-metrics-info-interval: 60
+        slot-service:
+          dynamic-slot: true
+        checkpoint:
+          interval: 10000
+          timeout: 60000
+          storage:
+            type: hdfs
+            max-retained: 3
+            plugin-config:
+              namespace: /opt/seatunnel/checkpoints
+              storage.type: hdfs
+              fs.defaultFS: file:///
+        telemetry:
+          metric:
+            enabled: true
+          log:
+            scheduled-deletion-enable: true
+        http:
+          enable-http: true
+          port: 8080
+          enable-dynamic-port: false
+  hazelcast.yaml: |
+    hazelcast:
+      cluster-name: seatunnel
+      network:
+        rest-api:
+          enabled: true
+          endpoint-groups:
+            CLUSTER_WRITE:
+              enabled: true
+            DATA:
+              enabled: true
+        join:
+          tcp-ip:
+            enabled: true
+            member-list:
+              - seatunnel-0.seatunnel-headless.dw-dev.svc.cluster.local
+              - seatunnel-1.seatunnel-headless.dw-dev.svc.cluster.local
+              - seatunnel-2.seatunnel-headless.dw-dev.svc.cluster.local
+        port:
+          auto-increment: false
+          port: 5801
+      properties:
+        hazelcast.invocation.max.retry.count: 20
+        hazelcast.tcp.join.port.try.count: 30
+        hazelcast.logging.type: log4j2
+        hazelcast.operation.generic.thread.count: 50
+        hazelcast.heartbeat.failuredetector.type: phi-accrual
+        hazelcast.heartbeat.interval.seconds: 2
+        hazelcast.max.no.heartbeat.seconds: 180
+  hazelcast-client.yaml: |
+    hazelcast-client:
+      cluster-name: seatunnel
+      network:
+        cluster-members:
+          - seatunnel-0.seatunnel-headless.dw-dev.svc.cluster.local:5801
+          - seatunnel-1.seatunnel-headless.dw-dev.svc.cluster.local:5801
+          - seatunnel-2.seatunnel-headless.dw-dev.svc.cluster.local:5801
+      connection-strategy:
+        connection-retry:
+          cluster-connect-timeout-millis: 10000
+  log4j2.properties: |
+    rootLogger.level = INFO
+    rootLogger.appenderRef.console.ref = console
+    appender.console.type = Console
+    appender.console.name = console
+    appender.console.target = SYSTEM_OUT
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{1.}] [%t] - %m%n
+  log4j2_client.properties: |
+    rootLogger.level = INFO
+    rootLogger.appenderRef.console.ref = console
+    appender.console.type = Console
+    appender.console.name = console
+    appender.console.target = SYSTEM_OUT
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{1.}] [%t] - %m%n
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seatunnel-headless
+  namespace: dw-dev
+  labels:
+    app: seatunnel
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: seatunnel
+  ports:
+    - name: hazelcast
+      port: 5801
+      targetPort: 5801
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seatunnel
+  namespace: dw-dev
+  labels:
+    app: seatunnel
+spec:
+  type: ClusterIP
+  selector:
+    app: seatunnel
+  ports:
+    - name: hazelcast
+      port: 5801
+      targetPort: 5801
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: seatunnel
+  namespace: dw-dev
+  labels:
+    app: seatunnel
+spec:
+  serviceName: seatunnel-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: seatunnel
+  template:
+    metadata:
+      labels:
+        app: seatunnel
+    spec:
+      # 每个节点一个 hybrid 节点，避免两个副本落同一台
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: seatunnel
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        # 静态成员列表要求 3 个 Pod DNS 都可解析；headless 服务开了
+        # publishNotReadyAddresses，这里等 DNS 就绪后再启动 Java。
+        - name: wait-dns
+          image: ${DW_REGISTRY}/rancher/mirrored-library-busybox:1.37.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh","-c"]
+          args:
+            - |
+              for i in $(seq 1 60); do
+                ok=1
+                for h in seatunnel-0 seatunnel-1 seatunnel-2; do
+                  nslookup $h.seatunnel-headless.dw-dev.svc.cluster.local >/dev/null 2>&1 || ok=0
+                done
+                [ "$ok" = "1" ] && echo "all peer DNS ready" && exit 0
+                sleep 2
+              done
+              echo "peer DNS not ready in time" && exit 1
+      containers:
+        - name: seatunnel
+          image: ${DW_REGISTRY}/library/seatunnel:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/java/bin/java
+          args:
+            - -Xms512m
+            - -Xmx1024m
+            - -XX:MaxMetaspaceSize=512m
+            - -Dfile.encoding=UTF-8
+            - -Dlog4j2.configurationFile=/opt/seatunnel/config/log4j2.properties
+            - -Dhazelcast.logging.type=log4j2
+            - -Dseatunnel.logs.path=/opt/seatunnel/logs
+            - -Dseatunnel.config=/opt/seatunnel/config/seatunnel.yaml
+            - -Dhazelcast.config=/opt/seatunnel/config/hazelcast.yaml
+            - -cp
+            - /opt/seatunnel/lib/*:/opt/seatunnel/starter/seatunnel-starter.jar
+            - org.apache.seatunnel.core.starter.seatunnel.SeaTunnelServer
+          env:
+            - name: JAVA_HOME
+              value: /opt/java
+            - name: SEATUNNEL_HOME
+              value: /opt/seatunnel
+            # 镜像内没有 coreutils，checkpoint 写入需要 chmod；用 hostPath 里的
+            # 静态 busybox + applet 符号链接补齐（见 docs/数据集成-补测-20261019.md）。
+            - name: PATH
+              value: /opt/seatunnel/connectors:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          ports:
+            - name: hazelcast
+              containerPort: 5801
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 5801
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 5801
+            initialDelaySeconds: 90
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /opt/seatunnel/config
+            - name: logs
+              mountPath: /opt/seatunnel/logs
+            # 服务端也要能读到连接器和 JDBC 驱动，否则客户端提交后服务端报
+            # "jar file ... can not be found in node seatunnel-x"
+            - name: connectors
+              mountPath: /opt/seatunnel/connectors
+            - name: jdbc-lib
+              mountPath: /opt/seatunnel/plugins/jdbc/lib
+      volumes:
+        - name: config
+          configMap:
+            name: seatunnel-config
+        - name: logs
+          emptyDir: {}
+        - name: connectors
+          hostPath:
+            path: /tmp/seatunnel-connectors
+            type: Directory
+        - name: jdbc-lib
+          hostPath:
+            path: /tmp/seatunnel-connectors/jdbc-lib
+            type: Directory

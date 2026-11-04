@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-pg-mysql-cross-sync",
+  "module": "sync",
+  "title": "PG → MySQL 异构同步",
+  "goal": "PostgreSQL 到 MySQL 的异构链路（门禁用例 gate_pg_mysql）：定源、建映射任务、运行、验收状态。",
+  "source": "docs/数据集成-验收汇总-20261019.md",
+  "steps": [
+    {"n": 1, "action": "分别确认 POSTGRESQL 源与 MYSQL 目标已存在", "tool": "list_datasources",
+     "expect": "两端数据源各有 id"},
+    {"n": 2, "action": "确认目标表结构（异构字段映射先对齐类型）", "tool": "catalog.describe_table",
+     "expect": "字段与类型清单"},
+    {"n": 3, "action": "五槽位校验+展示影响与回滚，用户确认后建任务", "tool": "platform.create_task",
+     "expect": "返回任务 id"},
+    {"n": 4, "action": "用户确认后运行并回查状态", "tool": "platform.run_task",
+     "expect": "作业名 + 后续 get_sync_task_status 为 SUCCESS"}
+  ],
+  "failWhen": [
+    {"if": "异构类型映射不支持（如 PG json/数组到 MySQL）", "then": "指出具体字段并建议改映射或中间表，生成变更申请而非硬跑"},
+    {"if": "目标表不存在", "then": "说明建表是 DDL 写操作，只给方案与申请路径"},
+    {"if": "运行后 lastStatus=FAILED", "then": "转“同步任务失败排查”链"}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-access-request",
+  "module": "datasource",
+  "title": "提交库/表读写权限申请",
+  "goal": "代用户提交库或表的 READ/WRITE 权限申请并回报受理编号，审批由资源 owner 人工完成。",
+  "source": "docs/权限申请-库表读写-20261023.md",
+  "steps": [
+    {"n": 1, "action": "确认目标表已被资产目录纳管、名称拼写一致", "tool": "catalog.describe_table",
+     "expect": "返回表元数据；未纳管则报错"},
+    {"n": 2, "action": "与用户核对 catalog、库名、表名、读或写四要素，缺哪项只问哪项", "tool": "request_access",
+     "expect": "参数齐备后才进入下一步"},
+    {"n": 3, "action": "提交权限申请并回报编号与状态", "tool": "request_access",
+     "expect": "返回 ok/id/PENDING 与 message"}
+  ],
+  "failWhen": [
+    {"if": "404 资源未纳管", "then": "说明该库表不在资产目录，引导先到数据资产页纳管，不提交空申请"},
+    {"if": "参数不全", "then": "只追问缺的那一项（读/写、表名），不把整张申请表重问一遍"},
+    {"if": "用户要求替他审批通过", "then": "明确审批人是资源 owner，本工具只提交申请不执行审批"}
+  ]
+}

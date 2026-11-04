@@ -1,0 +1,63 @@
+{
+  "name": "platform.stop_task",
+  "version": "1.0",
+  "description": "停止任务当前运行的作业。必须先向用户说明影响并 confirm=true。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "confirm": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "confirm",
+      "id"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "任务已存在",
+      "用户已确认"
+    ],
+    "sideEffects": "删除 k8s Job，不回滚已写入数据",
+    "idempotent": false,
+    "permissions": [
+      "platform.write"
+    ],
+    "requiresConfirmation": true,
+    "errorCodes": [
+      "CONFIRM_REQUIRED",
+      "INTERNAL_TOKEN_INVALID",
+      "TASK_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "id": 300,
+        "confirm": true
+      },
+      "output": {
+        "ok": true,
+        "deleted": true
+      }
+    }
+  ]
+}

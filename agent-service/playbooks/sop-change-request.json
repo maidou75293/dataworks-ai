@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-change-request",
+  "module": "sync",
+  "title": "删除/改配置类变更申请",
+  "goal": "删除任务/数据源、改配置、改权限、改调度、改表结构一律走申请：对象、原因、影响、回滚四要素齐全后提交。",
+  "source": "docs/生命周期与状态机-20261024.md",
+  "steps": [
+    {"n": 1, "action": "定位对象与当前状态（任务或数据源）", "tool": "get_sync_task_status",
+     "expect": "对象存在且状态明确"},
+    {"n": 2, "action": "与用户收齐 type/target/reason/impact/rollback", "tool": "request_change",
+     "expect": "四要素齐备"},
+    {"n": 3, "action": "提交变更申请并回报受理状态", "tool": "request_change",
+     "expect": "返回 id + PENDING_APPROVAL"}
+  ],
+  "failWhen": [
+    {"if": "400 类型不支持", "then": "说明第一期开放的申请类型，给替代路径"},
+    {"if": "404 申请对象不存在", "then": "先回列表核对 id/名称，不重复提交"},
+    {"if": "用户要求立即执行删除或改配置", "then": "拒绝执行，指到审批闸门与审批人"}
+  ]
+}

@@ -1,0 +1,39 @@
+---
+# 只读体检：任何一项不满足就停。
+- name: 发行版
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution in ['Ubuntu', 'Debian', 'CentOS', 'Rocky', 'AlmaLinux', 'RedHat', 'openEuler']
+    fail_msg: "不支持的发行版：{{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: 内核 >= 4.19
+  ansible.builtin.assert:
+    that: ansible_kernel is version('4.19', '>=')
+    fail_msg: "内核 {{ ansible_kernel }} 太老"
+
+- name: 内存 >= 7G
+  ansible.builtin.assert:
+    that: ansible_memtotal_mb | int >= 7000
+    fail_msg: "内存只有 {{ ansible_memtotal_mb }}MB"
+
+- name: 根分区存在
+  ansible.builtin.assert:
+    that: ansible_mounts | selectattr('mount', 'equalto', '/') | list | length > 0
+
+- name: 根分区可用 >= 20G
+  ansible.builtin.assert:
+    that: (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first | int) >= 21474836480
+    fail_msg: "根分区可用不足 20G"
+
+- name: 时间同步状态
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: ntp
+  changed_when: false
+  failed_when: false
+
+- name: 时间未同步只告警
+  ansible.builtin.debug:
+    msg: "WARN 时间未同步，etcd/TLS 可能异常"
+  when:
+    - ntp.stdout is defined
+    - ntp.stdout | trim != 'yes'

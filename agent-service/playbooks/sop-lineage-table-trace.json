@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-lineage-table-trace",
+  "module": "lineage",
+  "title": "表上下游血缘追踪",
+  "goal": "按表名给出上下游边与列级映射，区分 DEV/PROD，只展示工具返回的边。",
+  "source": "docs/数据血缘.md",
+  "steps": [
+    {"n": 1, "action": "按表名关键字查血缘边", "tool": "query_lineage",
+     "expect": "edges 数组含 source→target"},
+    {"n": 2, "action": "需要平台侧发布/运行双口径时补充查询", "tool": "platform.lineage",
+     "expect": "与第 1 步一致或标注差异"},
+    {"n": 3, "action": "按环境过滤 DEV/PROD 并说明口径", "tool": "query_lineage",
+     "expect": "env 参数显式给出"}
+  ],
+  "failWhen": [
+    {"if": "没有边", "then": "直接说未采集到血缘，不推断表关系"},
+    {"if": "返回条数受限", "then": "说明只展示了最近 N 条，可加大 limit 或缩关键字"},
+    {"if": "用户问未出现的字段映射", "then": "不补全未返回的映射，引导到血缘页查看"}
+  ]
+}

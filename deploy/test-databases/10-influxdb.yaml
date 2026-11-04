@@ -1,0 +1,60 @@
+# InfluxDB 1.8（SeaTunnel 连接器基于 InfluxQL 1.x），用于真实同步验证。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-influxdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: influxdb
+  namespace: dataworks-test-influxdb
+spec:
+  selector:
+    app: influxdb
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8086
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: influxdb
+  namespace: dataworks-test-influxdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influxdb
+  template:
+    metadata:
+      labels:
+        app: influxdb
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-3
+      containers:
+        - name: influxdb
+          image: docker.io/library/influxdb:1.8.10
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: INFLUXDB_DB
+              value: sync_test
+            - name: INFLUXDB_HTTP_AUTH_ENABLED
+              value: "false"
+          ports:
+            - containerPort: 8086
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/influxdb
+      volumes:
+        - name: data
+          emptyDir: {}

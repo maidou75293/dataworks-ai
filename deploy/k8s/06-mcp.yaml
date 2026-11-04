@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp
+  namespace: dw-dev
+  labels:
+    app: mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp
+  template:
+    metadata:
+      labels:
+        app: mcp
+    spec:
+      # DEV: 三节点资源都很紧（node1 CPU requests 98%），不绑定节点，按实际余量调度。
+      # node3 containerd 修复期，用反亲和尽量避开 node3。
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: ["dw-k8s-3"]
+      containers:
+        - name: mcp
+          image: ${DW_REGISTRY}/library/dw-runtime:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/embedding/venv/bin/uvicorn
+            - mcp_server:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+            - --app-dir
+            - /opt/mcp/app
+          env:
+            - name: DORIS_HOST
+              value: doris-fe.dw-dev.svc.cluster.local
+            - name: DORIS_PORT
+              value: "9030"
+            - name: EMBEDDING_URL
+              value: http://embedding.dw-dev.svc.cluster.local:8000
+            - name: TOOLS_DIR
+              value: /opt/mcp/tools
+            - name: GRAPH_PATH
+              value: /opt/mcp/graph/graph.json
+            - name: AUDIT_PATH
+              value: /opt/mcp/audit/audit.log
+            - name: DORIS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_USER
+            - name: DORIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_PASSWORD
+            - name: MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-auth
+                  key: MCP_TOKEN
+            - name: KEYCLOAK_URL
+              value: http://${DW_NODE1}:30081
+            - name: KEYCLOAK_REALM
+              value: dataworks
+            - name: KEYCLOAK_CLIENT_ID
+              value: mcp-gateway
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-client
+                  key: KC_CLIENT_SECRET
+            - name: GRAVITINO_URL
+              value: http://gravitino.dw-dev.svc.cluster.local:8090
+            - name: GRAVITINO_METALAKE
+              value: dataworks
+            - name: BACKEND_URL
+              value: http://${DW_NODE1}:30090
+            - name: PLATFORM_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: PLATFORM_INTERNAL_TOKEN
+            # REQ-OPS-ROTATE-1（2026-10-28）C5：agent-service 独立互信令牌，
+            # 断开「没配就回退 PLATFORM_INTERNAL_TOKEN」的耦合形态。
+            - name: AGENT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: AGENT_SERVICE_TOKEN
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: app
+              mountPath: /opt/mcp/app
+            - name: tools
+              mountPath: /opt/mcp/tools
+            - name: graph
+              mountPath: /opt/mcp/graph
+            - name: audit
+              mountPath: /opt/mcp/audit
+      volumes:
+        - name: app
+          configMap:
+            name: mcp-app
+        - name: tools
+          configMap:
+            name: mcp-tools
+        - name: graph
+          configMap:
+            name: mcp-graph
+        - name: audit
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp
+  namespace: dw-dev
+  labels:
+    app: mcp
+spec:
+  selector:
+    app: mcp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

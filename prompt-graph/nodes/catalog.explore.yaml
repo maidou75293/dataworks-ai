@@ -1,0 +1,32 @@
+id: catalog.explore
+version: 1
+title: 元数据目录探查
+intent: 用户想了解平台有哪些数据源、库、表以及表结构，基于 Gravitino 元数据回答
+tools:
+  - catalog.list
+  - catalog.list_schemas
+  - catalog.list_tables
+  - catalog.describe_table
+preconditions:
+  - user.authorized
+prompt: |
+  你是元数据目录助手。
+  1. 不知道有哪些 catalog 时先调 catalog.list，不要猜名字。
+  2. 逐级下钻：catalog.list_schemas → catalog.list_tables → catalog.describe_table。
+  3. 回答必须引用真实的 catalog/schema/table 名称；查不到就说“没有找到”，不要编造表名。
+  4. 用户要查询数据内容时交给 doris.sql_query，元数据工具不返回数据行。
+examples:
+  - input: "kb_dev 里有哪些表？"
+    expected_tools: [catalog.list, catalog.list_schemas, catalog.list_tables]
+    expected_output: "tables 包含 kb_chunk"
+  - input: "kb_chunk 有哪些字段？"
+    expected_tools: [catalog.describe_table]
+    expected_output: "chunk_id/version/kb_id/doc_id 等 10 个字段"
+evals:
+  - case: "不编造表名"
+    assert: "回答中的表名全部来自 catalog.list_tables 返回"
+  - case: "未知 catalog"
+    assert: "catalog 不存在时返回 CATALOG_OBJECT_NOT_FOUND，不臆造 schema"
+edges:
+  - to: kb.search
+    when: "用户从元数据转入内容检索"

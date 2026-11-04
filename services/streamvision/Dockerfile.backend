@@ -1,0 +1,39 @@
+# StreamVision backend image
+# Build context: ~/stream-agent/backend (WSL)
+#   docker build -f services/streamvision/Dockerfile.backend \
+#     -t <registry>:30500/streamvision/backend:1.0.0 ~/stream-agent/backend
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# ffmpeg is required by services/frame_extractor.py
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Preserve the repo layout: several modules resolve the DB as
+# Path(__file__).parents[1] / "streamvision.db" (i.e. backend/streamvision.db).
+# Flattening the code into /app would make them miss the DB and silently fall
+# back to localhost service URLs.
+COPY . /app/backend
+RUN useradd --uid 1000 --create-home app \
+ && mkdir -p /data /logs /app/logs \
+ && ln -s /data/streamvision.db /app/backend/streamvision.db \
+ && ln -s /data /app/data \
+ && chown -R app:app /app /data /logs
+
+WORKDIR /app/backend
+
+USER app
+
+EXPOSE 8080
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -1,0 +1,56 @@
+# MongoDB-CDC 测试服务：单节点副本集（change streams 要求 replSet）。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-mongocdc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo-cdc
+  namespace: dataworks-test-mongocdc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongo-cdc
+  template:
+    metadata:
+      labels:
+        app: mongo-cdc
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-2
+      containers:
+        - name: mongo
+          image: docker.io/library/mongo:7
+          imagePullPolicy: IfNotPresent
+          command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+          ports:
+            - containerPort: 27017
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-cdc
+  namespace: dataworks-test-mongocdc
+spec:
+  selector:
+    app: mongo-cdc
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017

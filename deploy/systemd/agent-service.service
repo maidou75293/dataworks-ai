@@ -1,0 +1,23 @@
+# 与仓库 agent-service/agent-service.service 同步维护（DL-F1 收编进部署清单）。
+# 代码/venv 首次铺设：在开发机 deploy/ 下执行 bash deploy.sh agent-service；
+# site.yml 的 agent-service tag（tasks/60-agent-service.yml）负责 unit 安装、
+# .env 补建（来自 platform-keys secret，存在则不覆盖）、enable --now 与健康检查。
+
+[Unit]
+Description=dataworks agent-service (SSE chat, tools, memory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/dataworks-agent/agent-service
+EnvironmentFile=/opt/dataworks-agent/agent-service/.env
+ExecStart=/opt/dataworks-agent/agent-service/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8097
+Restart=always
+RestartSec=3
+# 模型 Key 只在 EnvironmentFile 里，不写入 unit 文件
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

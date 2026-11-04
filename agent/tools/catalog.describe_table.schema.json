@@ -1,0 +1,101 @@
+{
+  "name": "catalog.describe_table",
+  "version": "1.0",
+  "description": "查看表的字段、类型与属性（来自 Gravitino 元数据）；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "catalog": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "catalog",
+      "schema",
+      "table"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "catalog": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      },
+      "comment": {
+        "type": "string"
+      },
+      "columns": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "nullable": {
+              "type": "boolean"
+            },
+            "comment": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "properties": {
+        "type": "object"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "catalog.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "CATALOG_UNAVAILABLE",
+      "CATALOG_OBJECT_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "catalog": "doris_dev",
+        "schema": "kb_dev",
+        "table": "kb_chunk"
+      },
+      "output": {
+        "catalog": "doris_dev",
+        "schema": "kb_dev",
+        "table": "kb_chunk",
+        "comment": "",
+        "columns": [
+          {
+            "name": "chunk_id",
+            "type": "long",
+            "nullable": false,
+            "comment": ""
+          }
+        ],
+        "properties": {}
+      }
+    }
+  ]
+}

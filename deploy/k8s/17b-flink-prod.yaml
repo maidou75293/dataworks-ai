@@ -1,0 +1,534 @@
+# Flink 1.20 线上（PROD）会话集群：和 DEV 完全独立，避免互相挤 slot。
+#
+# 背景（外部深度审计 F-6）：之前 DEV 调试作业和线上作业跑在同一个会话集群，
+# DEV 一个死循环作业就能把 slot 吃满、甚至影响线上的 checkpoint。
+# 这里起一套独立的小集群，后端通过 FLINK_PROD_REST_URL / FLINK_PROD_GATEWAY_URL 指向它。
+#
+# 规模：JM 1 × 1Gi、TM 1 × 2 slot（2560Mi）、Gateway 1 × 768Mi。
+# 与 17-flink.yaml 的唯一区别是资源名统一加 -prod 前缀、slot 少一半（线上以稳定为主）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-prod-conf
+  namespace: dw-dev
+data:
+  flink-conf.yaml: |
+    jobmanager.rpc.address: flink-prod-jobmanager
+    jobmanager.rpc.port: 6123
+    jobmanager.memory.process.size: 768m
+    taskmanager.memory.process.size: 1536m
+    taskmanager.numberOfTaskSlots: 2
+    parallelism.default: 1
+    execution.checkpointing.interval: 30s
+    state.backend.type: hashmap
+    state.checkpoints.dir: file:///opt/flink/checkpoints
+    rest.address: flink-prod-jobmanager
+    rest.bind-address: 0.0.0.0
+    sql-gateway.endpoint.rest.address: 0.0.0.0
+    sql-gateway.endpoint.rest.port: 8083
+    # S3：这里只放**非密**部分。s3.access-key / s3.secret-key 一律不出现在本 ConfigMap，
+    # 由下面的 entrypoint.sh 在容器启动时从 Secret 注入的环境变量拼进运行时配置。
+    s3.endpoint: http://minio.dw-dev.svc.cluster.local:9000
+    s3.path.style.access: true
+  # 渲染 Flink 运行时配置。放这里（而不是镜像里）是为了不用重建镜像也能改；
+  # 三个角色共用同一份，靠第一个参数区分。与 17-flink.yaml 里那份必须逐字相同
+  # （由 scripts/ci/check-flink-s3-secret.sh 断言，改一处忘另一处会红）。
+  entrypoint.sh: |
+    #!/bin/bash
+    # Flink 运行时配置渲染：非密配置来自本 ConfigMap 模板，S3 凭据来自 Secret 注入的环境变量。
+    #
+    # 为什么必须在容器里渲染，而不是把口令写进 ConfigMap、或另挂一个 s3.conf 文件：
+    # 实测 Flink 1.20.1（GlobalConfiguration.loadConfiguration + bin/config.sh）
+    #   1) 配置文件里的 ${VAR} **不展开**（flink-conf.yaml / config.yaml、flat / nested 都一样）；
+    #   2) include-files 不生效，conf 目录下其它文件（s3.conf / s3.yaml）一律不读；
+    #   3) 只认唯一那份配置文件，但尊重外部 FLINK_CONF_DIR（bin/config.sh:202），
+    #      且 legacy flink-conf.yaml 优先于发行包自带的 config.yaml。
+    # 所以真实凭据只能由 shell 在启动时拼进那唯一一份文件；ConfigMap 永远只放非密模板。
+    set -euo pipefail
+
+    CONF_SRC="${CONF_SRC:-/opt/flink-launch}"
+    CONF_DIR="${CONF_DIR:-/tmp/flink-conf}"
+    FLINK_HOME_DIR="${FLINK_HOME_DIR:-${FLINK_HOME:-/opt/flink}}"
+    TEMPLATE="$CONF_SRC/flink-conf.yaml"
+
+    if [ "$#" -lt 1 ]; then
+      echo "entrypoint: 用法 $0 <jobmanager|taskmanager|sql-gateway> [参数...]" >&2
+      exit 2
+    fi
+    ROLE="$1"
+    shift
+
+    # 缺凭据就显式失败：留空会让 S3 抛难懂的鉴权错误，排查成本高（禁止静默）。
+    : "${S3_ACCESS_KEY:?entrypoint: S3_ACCESS_KEY 未注入（Secret minio-credentials/MINIO_ROOT_USER）}"
+    : "${S3_SECRET_KEY:?entrypoint: S3_SECRET_KEY 未注入（Secret minio-credentials/MINIO_ROOT_PASSWORD）}"
+    if [ ! -s "$TEMPLATE" ]; then
+      echo "entrypoint: 找不到非密模板 $TEMPLATE" >&2
+      exit 1
+    fi
+    if [ ! -f "$FLINK_HOME_DIR/bin/$ROLE.sh" ]; then
+      echo "entrypoint: 角色脚本不存在 $FLINK_HOME_DIR/bin/$ROLE.sh" >&2
+      exit 2
+    fi
+
+    mkdir -p "$CONF_DIR"
+    chmod 700 "$CONF_DIR"
+    # 镜像自带的 logback.xml / log4j.properties 必须一起进渲染目录，
+    # 否则 FLINK_CONF_DIR 一切换，日志配置就丢了。
+    cp -f "$FLINK_HOME_DIR"/conf/* "$CONF_DIR"/ 2>/dev/null || true
+    # 只留一份配置文件，不依赖「legacy 优先」这个隐含行为。
+    rm -f "$CONF_DIR/config.yaml"
+
+    # 模板里若混进任何 s3 凭据行（历史上脚本曾 echo 进 ConfigMap），一律丢弃后再注入真实值，
+    # 这样即使有人把明文塞回 ConfigMap，运行时也不会采用它。
+    grep -v -E '^[[:space:]]*s3\.(access-key|secret-key)[[:space:]]*:' "$TEMPLATE" \
+      > "$CONF_DIR/flink-conf.yaml" || true
+    {
+      printf 's3.access-key: %s\n' "$S3_ACCESS_KEY"
+      printf 's3.secret-key: %s\n' "$S3_SECRET_KEY"
+    } >> "$CONF_DIR/flink-conf.yaml"
+    chmod 600 "$CONF_DIR/flink-conf.yaml"
+
+    export FLINK_CONF_DIR="$CONF_DIR"
+    echo "entrypoint: 已渲染 $CONF_DIR/flink-conf.yaml（凭据来自 Secret，ConfigMap 里没有它）"
+    exec /bin/bash "$FLINK_HOME_DIR/bin/$ROLE.sh" "$@"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-prod-jobmanager
+  namespace: dw-dev
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: flink-prod-jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink-prod-jobmanager
+    spec:
+      initContainers:
+        - name: s3-plugin
+          image: ${DW_REGISTRY}/library/flink:1.20.1
+          imagePullPolicy: IfNotPresent
+          # 镜像自带 /opt/flink/opt/flink-s3-fs-hadoop-1.20.1.jar，放进 plugins 才启用 s3://
+          # 注意：该镜像的 cp 缺 libacl，只能用 shell 重定向复制
+          command:
+            - /bin/sh
+            - -c
+            - mkdir -p /plugins/s3-fs-hadoop && cat /opt/flink/opt/flink-s3-fs-hadoop-1.20.1.jar > /plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.1.jar
+          # OPS-DRIFT-1 钉桩：live 的 initContainer 也带这个 env（6 负载一致），按 git==live
+          # 等价照抄；init 阶段不启动 JVM，它在这里本身无副作用，生效性判定见主容器注释。
+          env:
+            - name: HADOOP_USER_NAME
+              value: flink
+          volumeMounts:
+            - name: s3-plugins
+              mountPath: /plugins
+      containers:
+        - name: jobmanager
+          image: ${DW_REGISTRY}/library/flink:1.20.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/opt/flink-launch/entrypoint.sh", "jobmanager", "start-foreground"]
+          env:
+            - name: JAVA_HOME
+              value: /opt/java
+            - name: FLINK_HOME
+              value: /opt/flink
+            - name: PATH
+              value: /opt/java/bin:/opt/flink/bin:/usr/local/bin:/usr/bin:/bin
+            # S3 凭据只从 Secret 来（secretKeyRef），由 entrypoint.sh 渲染进运行时配置。
+            # 口令不出现在 ConfigMap、不出现在 Deployment 规格明文里，也不落控制机磁盘。
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+            # OPS-DRIFT-1 钉桩（2026-10-26 实测，证据 logs/ops-drift-1/，同 17-flink.yaml）：
+            # shaded Hadoop UGI 读 HADOOP_USER_NAME 且**优先于** JVM user.name
+            # （ugi-probe-20261026T1922.txt 实验 A/D；java 进程 environ 实测：pod-java-env-20261026T1925.txt）。
+            # 容器以 root(uid0) 跑：flink-nss 管「用户名可解析」，本 env 管「身份钉成 flink」。
+            # 重放抹掉 = UGI 身份悄悄从 flink 变 root；「撤 env 只留 nss」未做重启实验，
+            # 实验前不许从清单删。详见 docs/运维-Flink清单漂移-20261026.md §三。
+            - name: HADOOP_USER_NAME
+              value: flink
+          ports:
+            - name: rpc
+              containerPort: 6123
+            - name: rest
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /overview
+              port: rest
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /overview
+              port: rest
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            # 非密模板 + entrypoint.sh 挂成目录；运行时那份 flink-conf.yaml 由
+            # entrypoint.sh 渲染到 /tmp/flink-conf（口令不进 ConfigMap，见文件头注释）。
+            - name: conf
+              mountPath: /opt/flink-launch
+              readOnly: true
+            - name: s3-plugins
+              mountPath: /opt/flink/plugins
+            # OPS-DRIFT-1 钉桩：live 现状挂着 s3.conf，但 Flink 1.20.1 实测**从不读取**
+            # conf 目录下的其它文件（S5 实验，docs/安全发现-S5-Flink口令挪出ConfigMap-20261026.md
+            # 结论表；Secret flink-s3-conf 属「白挂 + 多存一份 root AK/SK」）。
+            # 挂它只为「重放不抹 live」，不引入任何新依赖；
+            # 待 PM 窗口撤销 Secret 时，连同本挂载与卷、01-secrets 模板一并删除（三处分叉=新漂移）。
+            - name: s3-conf
+              mountPath: /opt/flink/conf/s3.conf
+              subPath: s3.conf
+              readOnly: true
+            # 镜像里没有 /etc/passwd：Hadoop UGI 初始化时用户名为空，
+            # S3 文件系统会抛 KerberosAuthException（invalid null input: name）
+            - name: nss
+              mountPath: /etc/passwd
+              subPath: passwd
+              readOnly: true
+            - name: nss
+              mountPath: /etc/group
+              subPath: group
+              readOnly: true
+            - name: checkpoints
+              mountPath: /opt/flink/checkpoints
+            - name: logs
+              mountPath: /opt/flink/log
+      volumes:
+        - name: conf
+          configMap:
+            name: flink-prod-conf
+        - name: s3-plugins
+          emptyDir: {}
+        - name: nss
+          configMap:
+            name: flink-nss
+        # OPS-DRIFT-1 钉桩：与上方挂载同源（Flink 不读它，删除等 PM 窗口，见挂载处注释）。
+        # defaultMode 写十进制 420=0644，与 kubectl 输出逐字节一致，守卫按窗口计数比对。
+        - name: s3-conf
+          secret:
+            secretName: flink-s3-conf
+            defaultMode: 420
+        - name: checkpoints
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-prod-jobmanager
+  namespace: dw-dev
+spec:
+  selector:
+    app: flink-prod-jobmanager
+  ports:
+    - name: rpc
+      port: 6123
+      targetPort: rpc
+    - name: rest
+      port: 8081
+      targetPort: rest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-prod-taskmanager
+  namespace: dw-dev
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: flink-prod-taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink-prod-taskmanager
+    spec:
+      initContainers:
+        - name: s3-plugin
+          image: ${DW_REGISTRY}/library/flink:1.20.1
+          imagePullPolicy: IfNotPresent
+          # 镜像自带 /opt/flink/opt/flink-s3-fs-hadoop-1.20.1.jar，放进 plugins 才启用 s3://
+          # 注意：该镜像的 cp 缺 libacl，只能用 shell 重定向复制
+          command:
+            - /bin/sh
+            - -c
+            - mkdir -p /plugins/s3-fs-hadoop && cat /opt/flink/opt/flink-s3-fs-hadoop-1.20.1.jar > /plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.1.jar
+          # OPS-DRIFT-1 钉桩：live 的 initContainer 也带这个 env（6 负载一致），按 git==live
+          # 等价照抄；init 阶段不启动 JVM，它在这里本身无副作用，生效性判定见主容器注释。
+          env:
+            - name: HADOOP_USER_NAME
+              value: flink
+          volumeMounts:
+            - name: s3-plugins
+              mountPath: /plugins
+      containers:
+        - name: taskmanager
+          image: ${DW_REGISTRY}/library/flink:1.20.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/opt/flink-launch/entrypoint.sh", "taskmanager", "start-foreground"]
+          env:
+            - name: JAVA_HOME
+              value: /opt/java
+            - name: FLINK_HOME
+              value: /opt/flink
+            - name: PATH
+              value: /opt/java/bin:/opt/flink/bin:/usr/local/bin:/usr/bin:/bin
+            # S3 凭据只从 Secret 来（secretKeyRef），由 entrypoint.sh 渲染进运行时配置。
+            # 口令不出现在 ConfigMap、不出现在 Deployment 规格明文里，也不落控制机磁盘。
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+            # OPS-DRIFT-1 钉桩：同上（生效性判定与删除约束见 jobmanager 处注释）。
+            - name: HADOOP_USER_NAME
+              value: flink
+          resources:
+            requests:
+              cpu: 200m
+              memory: 768Mi
+            limits:
+              cpu: "1"
+              memory: 1792Mi
+          volumeMounts:
+            # 非密模板 + entrypoint.sh 挂成目录；运行时那份 flink-conf.yaml 由
+            # entrypoint.sh 渲染到 /tmp/flink-conf（口令不进 ConfigMap，见文件头注释）。
+            - name: conf
+              mountPath: /opt/flink-launch
+              readOnly: true
+            - name: s3-plugins
+              mountPath: /opt/flink/plugins
+            # OPS-DRIFT-1 钉桩：live 现状挂着 s3.conf，但 Flink 1.20.1 实测**从不读取**
+            # conf 目录下的其它文件（S5 实验，docs/安全发现-S5-Flink口令挪出ConfigMap-20261026.md
+            # 结论表；Secret flink-s3-conf 属「白挂 + 多存一份 root AK/SK」）。
+            # 挂它只为「重放不抹 live」，不引入任何新依赖；
+            # 待 PM 窗口撤销 Secret 时，连同本挂载与卷、01-secrets 模板一并删除（三处分叉=新漂移）。
+            - name: s3-conf
+              mountPath: /opt/flink/conf/s3.conf
+              subPath: s3.conf
+              readOnly: true
+            # 镜像里没有 /etc/passwd：Hadoop UGI 初始化时用户名为空，
+            # S3 文件系统会抛 KerberosAuthException（invalid null input: name）
+            - name: nss
+              mountPath: /etc/passwd
+              subPath: passwd
+              readOnly: true
+            - name: nss
+              mountPath: /etc/group
+              subPath: group
+              readOnly: true
+            - name: checkpoints
+              mountPath: /opt/flink/checkpoints
+            - name: logs
+              mountPath: /opt/flink/log
+      volumes:
+        - name: conf
+          configMap:
+            name: flink-prod-conf
+        - name: s3-plugins
+          emptyDir: {}
+        - name: nss
+          configMap:
+            name: flink-nss
+        # OPS-DRIFT-1 钉桩：与上方挂载同源（Flink 不读它，删除等 PM 窗口，见挂载处注释）。
+        # defaultMode 写十进制 420=0644，与 kubectl 输出逐字节一致，守卫按窗口计数比对。
+        - name: s3-conf
+          secret:
+            secretName: flink-s3-conf
+            defaultMode: 420
+        - name: checkpoints
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-prod-sql-gateway
+  namespace: dw-dev
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: flink-prod-sql-gateway
+  template:
+    metadata:
+      labels:
+        app: flink-prod-sql-gateway
+    spec:
+      initContainers:
+        - name: s3-plugin
+          image: ${DW_REGISTRY}/library/flink:1.20.1
+          imagePullPolicy: IfNotPresent
+          # 镜像自带 /opt/flink/opt/flink-s3-fs-hadoop-1.20.1.jar，放进 plugins 才启用 s3://
+          # 注意：该镜像的 cp 缺 libacl，只能用 shell 重定向复制
+          command:
+            - /bin/sh
+            - -c
+            - mkdir -p /plugins/s3-fs-hadoop && cat /opt/flink/opt/flink-s3-fs-hadoop-1.20.1.jar > /plugins/s3-fs-hadoop/flink-s3-fs-hadoop-1.20.1.jar
+          # OPS-DRIFT-1 钉桩：live 的 initContainer 也带这个 env（6 负载一致），按 git==live
+          # 等价照抄；init 阶段不启动 JVM，它在这里本身无副作用，生效性判定见主容器注释。
+          env:
+            - name: HADOOP_USER_NAME
+              value: flink
+          volumeMounts:
+            - name: s3-plugins
+              mountPath: /plugins
+      containers:
+        - name: sql-gateway
+          image: ${DW_REGISTRY}/library/flink:1.20.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/opt/flink-launch/entrypoint.sh", "sql-gateway", "start-foreground"]
+          env:
+            - name: JAVA_HOME
+              value: /opt/java
+            - name: FLINK_HOME
+              value: /opt/flink
+            - name: PATH
+              value: /opt/java/bin:/opt/flink/bin:/usr/local/bin:/usr/bin:/bin
+            # S3 凭据只从 Secret 来（secretKeyRef），由 entrypoint.sh 渲染进运行时配置。
+            # 口令不出现在 ConfigMap、不出现在 Deployment 规格明文里，也不落控制机磁盘。
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+            # OPS-DRIFT-1 钉桩（2026-10-26 实测，证据 logs/ops-drift-1/，同 17-flink.yaml）：
+            # shaded Hadoop UGI 读 HADOOP_USER_NAME 且**优先于** JVM user.name
+            # （ugi-probe-20261026T1922.txt 实验 A/D；java 进程 environ 实测：pod-java-env-20261026T1925.txt）。
+            # 容器以 root(uid0) 跑：flink-nss 管「用户名可解析」，本 env 管「身份钉成 flink」。
+            # 重放抹掉 = UGI 身份悄悄从 flink 变 root；「撤 env 只留 nss」未做重启实验，
+            # 实验前不许从清单删。详见 docs/运维-Flink清单漂移-20261026.md §三。
+            - name: HADOOP_USER_NAME
+              value: flink
+          ports:
+            - name: rest
+              containerPort: 8083
+          readinessProbe:
+            httpGet:
+              path: /v1/info
+              port: rest
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: rest
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          volumeMounts:
+            # 非密模板 + entrypoint.sh 挂成目录；运行时那份 flink-conf.yaml 由
+            # entrypoint.sh 渲染到 /tmp/flink-conf（口令不进 ConfigMap，见文件头注释）。
+            - name: conf
+              mountPath: /opt/flink-launch
+              readOnly: true
+            - name: s3-plugins
+              mountPath: /opt/flink/plugins
+            # OPS-DRIFT-1 钉桩：live 现状挂着 s3.conf，但 Flink 1.20.1 实测**从不读取**
+            # conf 目录下的其它文件（S5 实验，docs/安全发现-S5-Flink口令挪出ConfigMap-20261026.md
+            # 结论表；Secret flink-s3-conf 属「白挂 + 多存一份 root AK/SK」）。
+            # 挂它只为「重放不抹 live」，不引入任何新依赖；
+            # 待 PM 窗口撤销 Secret 时，连同本挂载与卷、01-secrets 模板一并删除（三处分叉=新漂移）。
+            - name: s3-conf
+              mountPath: /opt/flink/conf/s3.conf
+              subPath: s3.conf
+              readOnly: true
+            # 镜像里没有 /etc/passwd：Hadoop UGI 初始化时用户名为空，
+            # S3 文件系统会抛 KerberosAuthException（invalid null input: name）
+            - name: nss
+              mountPath: /etc/passwd
+              subPath: passwd
+              readOnly: true
+            - name: nss
+              mountPath: /etc/group
+              subPath: group
+              readOnly: true
+            - name: logs
+              mountPath: /opt/flink/log
+      volumes:
+        - name: conf
+          configMap:
+            name: flink-prod-conf
+        - name: s3-plugins
+          emptyDir: {}
+        - name: nss
+          configMap:
+            name: flink-nss
+        # OPS-DRIFT-1 钉桩：与上方挂载同源（Flink 不读它，删除等 PM 窗口，见挂载处注释）。
+        # defaultMode 写十进制 420=0644，与 kubectl 输出逐字节一致，守卫按窗口计数比对。
+        - name: s3-conf
+          secret:
+            secretName: flink-s3-conf
+            defaultMode: 420
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-prod-sql-gateway
+  namespace: dw-dev
+spec:
+  selector:
+    app: flink-prod-sql-gateway
+  ports:
+    - name: rest
+      port: 8083
+      targetPort: rest
+---
+# Flink 容器没有 /etc/passwd，Hadoop UGI（S3 文件系统）初始化会失败；
+# 这里补一份最小 passwd/group（v447 UDF 的 s3:// jar 依赖它）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-nss
+  namespace: dw-dev
+data:
+  passwd: |
+    root:x:0:0:root:/root:/bin/sh
+    flink:x:9999:9999:flink:/opt/flink:/bin/sh
+  group: |
+    root:x:0:
+    flink:x:9999:

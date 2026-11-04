@@ -1,0 +1,20 @@
+[Unit]
+Description=Apache Doris FE (DEV)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+Environment=JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+Environment=DORIS_HOME=/opt/doris/fe
+Environment=JAVA_OPTS=-Xmx3g -Xms2g
+ExecStart=/opt/doris/fe/bin/start_fe.sh --console
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+LimitNPROC=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+import json
+import os
+import urllib.request
+
+from prefect import flow, task
+
+MCP = "http://mcp.dw-dev.svc.cluster.local:8080"
+MCP_TOKEN = os.environ.get("MCP_TOKEN", "")
+
+
+@task(retries=3, retry_delay_seconds=5, log_prints=True)
+def ingest_doc(doc_id: int, title: str, content: str, acl: list[str]):
+    payload = {
+        "params": {
+            "kb_id": 1,
+            "doc_id": doc_id,
+            "version": 1,
+            "title": title,
+            "content": content,
+            "acl_tags": acl,
+            "chunk_size": 500,
+            "chunk_overlap": 50,
+        }
+    }
+    headers = {"Content-Type": "application/json"}
+    if MCP_TOKEN:
+        headers["Authorization"] = f"Bearer {MCP_TOKEN}"
+    req = urllib.request.Request(
+        f"{MCP}/tools/kb.ingest",
+        data=json.dumps(payload, ensure_ascii=False).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        return json.loads(resp.read().decode())["result"]
+
+
+@flow(name="kb-ingest-flow", log_prints=True)
+def kb_ingest_flow(
+    doc_id: int = 2001,
+    title: str = "Prefect 测试文档",
+    content: str = "这是由 Prefect Flow 写入知识库的测试文档，关键词 PREFECT2001。",
+    acl: list[str] = ["public"],
+):
+    result = ingest_doc(doc_id, title, content, acl)
+    print(f"ingested: {result}")
+    return result
+
+
+if __name__ == "__main__":
+    kb_ingest_flow.serve(name="kb-ingest-demo", tags=["dev"])

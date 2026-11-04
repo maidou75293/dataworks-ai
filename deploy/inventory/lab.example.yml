@@ -1,0 +1,41 @@
+# 集群清单模板（REQ-OSS-PUBSCRUB-1：仓内不存真实内网 IP，inventory/lab.yml 已脱管）。
+#
+# 用法：
+#   cp inventory/lab.example.yml inventory/lab.yml   # 把三节点改成你的内网 IP
+#   bash ../deploy.sh install                        # 或在仓库根 ansible-playbook -i inventory/lab.yml site.yml
+#
+# 每台可以不一样：
+#   ansible_user / ansible_password / ansible_ssh_private_key_file / ansible_port
+# 密码模式只用于首次接管；装完立刻推公钥，切回密钥。
+# 密码不要写明文，放 ansible-vault：
+#   ansible_password: "{{ vault_ssh_password }}"
+
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: "{{ playbook_dir }}/keys/id_ed25519"
+    ansible_python_interpreter: /usr/bin/python3
+    cluster_name: lab
+
+  children:
+    k3s_cluster:
+      children:
+        k3s_servers:
+          children:
+            # 第一个是首节点：--cluster-init，embedded etcd
+            k3s_init:
+              hosts:
+                dw-k8s-1:
+                  ansible_host: 10.0.0.11
+                  k3s_node_ip: 10.0.0.11
+            k3s_join:
+              hosts:
+                dw-k8s-2:
+                  ansible_host: 10.0.0.12
+                  k3s_node_ip: 10.0.0.12
+                dw-k8s-3:
+                  ansible_host: 10.0.0.13
+                  k3s_node_ip: 10.0.0.13
+        # 纯工作节点放这里；role=agent，没有 etcd
+        k3s_agents:
+          hosts: {}

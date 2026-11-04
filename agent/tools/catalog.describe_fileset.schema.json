@@ -1,0 +1,81 @@
+{
+  "name": "catalog.describe_fileset",
+  "version": "1.0",
+  "description": "查看文件集的类型、存储位置与属性；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "catalog": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      },
+      "fileset": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "catalog",
+      "schema",
+      "fileset"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "catalog": {
+        "type": "string"
+      },
+      "schema": {
+        "type": "string"
+      },
+      "fileset": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "storageLocation": {
+        "type": "string"
+      },
+      "comment": {
+        "type": "string"
+      },
+      "properties": {
+        "type": "object"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "catalog.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "CATALOG_UNAVAILABLE",
+      "CATALOG_OBJECT_NOT_FOUND"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "catalog": "minio_fileset",
+        "schema": "kb",
+        "fileset": "docs"
+      },
+      "output": {
+        "catalog": "minio_fileset",
+        "schema": "kb",
+        "fileset": "docs",
+        "type": "managed",
+        "storageLocation": "s3a://dataworks-dev/kb/docs",
+        "comment": "kb documents",
+        "properties": {}
+      }
+    }
+  ]
+}

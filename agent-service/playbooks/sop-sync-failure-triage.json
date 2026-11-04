@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-sync-failure-triage",
+  "module": "sync",
+  "title": "同步任务失败排查",
+  "goal": "对失败任务给出定位链条：平台状态 vs 实时状态、影响面血缘、后续动作只出申请不代办。",
+  "source": "docs/数据集成-验收汇总-20261019.md",
+  "steps": [
+    {"n": 1, "action": "按状态过滤列出失败任务", "tool": "list_sync_tasks",
+     "expect": "status=FAILED 的任务与 lastRunAt"},
+    {"n": 2, "action": "对具体任务查平台 lastStatus 与 k8s 实时状态", "tool": "get_sync_task_status",
+     "expect": "jobLiveStatus；不一致时以实时状态为准"},
+    {"n": 3, "action": "查该任务产出表的上下游血缘圈定影响面", "tool": "query_lineage",
+     "expect": "受影响 source→target 边"},
+    {"n": 4, "action": "需要重跑/改参/停止时生成变更申请", "tool": "request_change",
+     "expect": "申请 id + PENDING_APPROVAL"}
+  ],
+  "failWhen": [
+    {"if": "404 同步任务不存在", "then": "让用户给任务编码或到列表确认，不猜 id"},
+    {"if": "平台与 k8s 状态不一致", "then": "两个值都报并注明差异，不说“已恢复”"},
+    {"if": "用户要求直接重启", "then": "本对话工具不执行写操作，给申请路径与审批人"}
+  ]
+}

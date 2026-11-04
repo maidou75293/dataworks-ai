@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-sync-stop-rerun",
+  "module": "sync",
+  "title": "停止并重跑同步任务",
+  "goal": "运行中任务的停止→重跑链路；每一步写操作都需要用户先确认影响，停止后仍可回看状态。",
+  "source": "docs/生命周期与状态机-20261024.md",
+  "steps": [
+    {"n": 1, "action": "确认任务正在运行并拿到作业名", "tool": "get_sync_task_status",
+     "expect": "jobLiveStatus=RUNNING 与作业名"},
+    {"n": 2, "action": "向用户说明影响并等待确认，带 confirm=true 停止", "tool": "platform.stop_task",
+     "expect": "Job 已删除"},
+    {"n": 3, "action": "用户确认重跑影响后再运行", "tool": "platform.run_task",
+     "expect": "新作业名"},
+    {"n": 4, "action": "回查新作业状态", "tool": "get_sync_task_status",
+     "expect": "lastStatus 收敛为 SUCCESS/FAILED 之一"}
+  ],
+  "failWhen": [
+    {"if": "用户未确认", "then": "绝不调用 stop_task/run_task，不“先停了再说”"},
+  {"if": "作业已不存在", "then": "跳过停止直接查状态，如实说作业已结束"},
+  {"if": "停止后用户要看历史", "then": "说明停止后可回看任务详情页，不重跑也算恢复"}
+  ]
+}

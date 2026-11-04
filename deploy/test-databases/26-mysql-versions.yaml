@@ -1,0 +1,208 @@
+# MySQL 版本兼容验证实例：5.6 / 5.7 / 8.4（8.0 已由 01-mysql.yaml 提供）。
+# 目的：验证「最近常用版本 + 历史经典版本」的采集能力（JDBC 全量/增量、CDC）。
+# 部署：kubectl apply -f deploy/test-databases/26-mysql-versions.yaml
+# 说明：
+#   - 全部开启 binlog ROW + FULL，供 MySQL-CDC 使用；
+#   - 5.6 镜像较老，init 脚本与本文件共用 mysql-init ConfigMap；
+#   - 8.4 已知限制：移除了 SHOW MASTER STATUS，Debezium 1.x 的 CDC 不可用，
+#     仅验证 JDBC 全量/增量。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql56
+  namespace: dataworks-test-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql56
+  template:
+    metadata:
+      labels:
+        app: mysql56
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-1
+      containers:
+        - name: mysql
+          image: docker.io/library/mysql:5.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - --server-id=56
+            - --log-bin=mysql-bin
+            - --binlog-format=ROW
+            - --binlog-row-image=FULL
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: test123
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+            - name: MYSQL_DATABASE
+              value: sync_test
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: init
+          configMap:
+            name: mysql-init
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql56
+  namespace: dataworks-test-mysql
+spec:
+  selector:
+    app: mysql56
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql57
+  namespace: dataworks-test-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql57
+  template:
+    metadata:
+      labels:
+        app: mysql57
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-1
+      containers:
+        - name: mysql
+          image: docker.io/library/mysql:5.7
+          imagePullPolicy: IfNotPresent
+          args:
+            - --server-id=57
+            - --log-bin=mysql-bin
+            - --binlog-format=ROW
+            - --binlog-row-image=FULL
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: test123
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+            - name: MYSQL_DATABASE
+              value: sync_test
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: init
+          configMap:
+            name: mysql-init
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql57
+  namespace: dataworks-test-mysql
+spec:
+  selector:
+    app: mysql57
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql84
+  namespace: dataworks-test-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql84
+  template:
+    metadata:
+      labels:
+        app: mysql84
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dw-k8s-1
+      containers:
+        - name: mysql
+          image: docker.io/library/mysql:8.4
+          imagePullPolicy: IfNotPresent
+          args:
+            - --server-id=84
+            - --log-bin=mysql-bin
+            - --binlog-format=ROW
+            - --binlog-row-image=FULL
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: test123
+            - name: MYSQL_ROOT_HOST
+              value: "%"
+            - name: MYSQL_DATABASE
+              value: sync_test
+          ports:
+            - containerPort: 3306
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: init
+          configMap:
+            name: mysql-init
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql84
+  namespace: dataworks-test-mysql
+spec:
+  selector:
+    app: mysql84
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306

@@ -1,0 +1,123 @@
+# 集群级参数。两种部署形态共用（空机器装 k3s / 接管已有 K8s）。
+
+k3s_version: v1.36.5+k3s1
+k3s_install_mode: online            # online | offline
+k3s_install_script_url: https://get.k3s.io
+k3s_artifact_base: https://rancher-mirror.rancher.cn/k3s
+k3s_secrets_encryption: true
+
+k3s_docker_mirrors:
+  - https://docker.1ms.run
+  - https://docker.1panel.live
+  - https://docker.m.daocloud.io
+
+k3s_node_labels:
+  dataworks.io/doris-be: "true"
+
+k3s_node_port_range: 30000-32767
+
+# 平台
+platform_namespace: dw-dev
+# 已有集群如果不用 local-path，在这里改成它的 StorageClass 名字
+platform_storage_class: local-path
+doris_be_label_key: dataworks.io/doris-be
+
+# 路径：入口固定是 deploy/site.yml 或 deploy/platform.yml，playbook_dir == deploy/
+deploy_dir: "{{ playbook_dir }}"
+kubeconfig_path: "{{ deploy_dir }}/clusters/{{ cluster_name }}.kubeconfig"
+platform_secrets_file: "{{ deploy_dir }}/secrets/{{ cluster_name }}.yml"
+platform_manifest_dir: "{{ deploy_dir }}/k8s"
+# 健康检查地址：inventory 里没写 platform_health_host 时，用首节点 IP。
+# 注意：不要在这里给 platform_health_host 赋默认值，否则会覆盖 inventory 里的值
+# （inventory/group_vars 的优先级高于 inventory 文件里的 vars）。
+platform_health_host_effective: >-
+  {{ platform_health_host | default(
+    hostvars[groups['k3s_init'][0]].k3s_node_ip
+    if (groups['k3s_init'] | default([]) | length > 0) else '127.0.0.1') }}
+platform_health_url: "http://{{ platform_health_host_effective }}:30090/api/health"
+registry_host: "{{ platform_health_host_effective }}"
+# —— REQ-OSS-PUBSCRUB-1 仓内零内网 IP 字面 ——
+# k8s 清单写 ${DW_NODE1}/${DW_NODE2}/${DW_NODE3}/${DW_NODE_CIDR} 占位 token，apply 时
+# 由 50-platform.yml 按下列派生值替换（同 ${DW_REGISTRY} 手法，继承 QUICKSTART-1 先例）；
+# .j2 清单直接引用这些变量。派生源=inventory 编组 ansible_host：k3s_init 首=节点1，
+# k3s_join[0]/[1]=节点2/3；接管已有集群（无这些编组）时全部回退 platform_health_host。
+# 注：观测目标固定三节点=现网形态；未来扩纯工作节点需把 k3s_agents 一并纳入循环。
+dw_node1_ip: >-
+  {{ (hostvars[groups['k3s_init'][0]]).ansible_host
+     if (groups['k3s_init'] | default([]) | length > 0)
+     else (platform_health_host_effective | trim) }}
+dw_node2_ip: >-
+  {{ (hostvars[groups['k3s_join'][0]]).ansible_host
+     if (groups['k3s_join'] | default([]) | length > 0)
+     else (dw_node1_ip | trim) }}
+dw_node3_ip: >-
+  {{ (hostvars[groups['k3s_join'][1]]).ansible_host
+     if (groups['k3s_join'] | default([]) | length > 1)
+     else (dw_node1_ip | trim) }}
+dw_node_cidr: >-
+  {{ (dw_node1_ip | trim).split('.')[:2] | join('.') }}.0.0/16
+# mos 桥=集群内（BUG-MOS-MIGRATE-1 落点定版 2026-11-04，合流时 PM 同步）：Service
+# modelonestation-app.dw-dev:8090；旧形态「宿主网关:8090 portproxy→WSL modelonestation」
+# 随 WSL 卸载已死。外部 mos 部署用 -e mos_base_url=… 或 inventory 覆盖。
+mos_base_url: "http://modelonestation-app.dw-dev.svc.cluster.local:8090"
+
+# 镜像仓库前缀（REQ-OSS-QUICKSTART-1）：k8s 清单统一写 ${DW_REGISTRY}/... 占位，
+# 50-platform.yml apply 时按本值替换。默认=集群私有仓库（05-registry.yaml 的 NodePort 30500，
+# 与历史硬编码首节点 IP:30500 等价）；接管已有集群/外部仓库时在 inventory 或
+# `-e dw_registry=registry.example.com:5000` 覆盖；纯用公网镜像可 `-e dw_registry=docker.io`
+# （自建件 dw-runtime/dataworks-backend 等仍需先 push 到所设仓库）。
+dw_registry: "{{ registry_host }}:30500"
+
+# 应用顺序就是依赖顺序：底座 → 数据 → 服务 → 应用
+platform_manifests:
+  - 00-namespace.yaml
+  - 05-registry.yaml
+  - 01-secrets.yaml.j2
+  - 01-postgres.yaml
+  - 02-init.yaml
+  - 02-minio.yaml
+  - 03-doris-service.yaml
+  - 05-doris-k8s.yaml
+  - 04-embedding-configmap.yaml
+  - 04-embedding.yaml
+  - 06-mcp-configmap-app.yaml
+  - 06-mcp-configmap-graph.yaml
+  - 06-mcp-configmap-tools.yaml
+  - 06-mcp.yaml
+  - 07-prefect-configmap.yaml
+  - 07-prefect.yaml
+  - 08-prefect-flows-configmap.yaml
+  - 08-prefect-pool.yaml
+  - 09-prefect-bridge-configmap.yaml
+  - 09-prefect-bridge.yaml
+  - 12-keycloak.yaml
+  - 14-gravitino.yaml
+  - 13-observability.yaml
+  - 16-monitoring.yaml
+  - 15-seatunnel.yaml
+  - 17-flink.yaml
+  - 17c-spark.yaml
+  - 18-mock-data.yaml
+  - 18-network-policy.yaml
+  - 19-kafka.yaml
+  - 22-local-shared.yaml
+  - 11-backend.yaml.j2
+  - 10-nodeports.yaml
+  - 19-domain.yaml
+
+# Gravitino（数据地图）
+gravitino_url: "http://{{ platform_health_host_effective }}:30093"
+gravitino_metalake: dataworks
+gravitino_catalog: doris_dev
+gravitino_doris_host: doris-fe.dw-dev.svc.cluster.local
+gravitino_doris_port: "9030"
+
+# Keycloak
+keycloak_url: "http://{{ platform_health_host_effective }}:30081"
+keycloak_realm: dataworks
+keycloak_web_client: dataworks-web
+keycloak_mcp_client: mcp-gateway
+
+# HDFS：bundled=随平台装一套（DEV）；external=连客户已有 HDFS
+hdfs_mode: native
+hdfs_webhdfs_url: "http://{{ dw_node1_ip | trim }}:9870"

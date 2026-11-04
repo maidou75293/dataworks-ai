@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-service-api-query",
+  "module": "service",
+  "title": "数据服务接口查询",
+  "goal": "对已发布的数据服务按指标/时序/分页三种口径取数，引用返回行数与上限。",
+  "source": "docs/生命周期与状态机-20261024.md",
+  "steps": [
+    {"n": 1, "action": "指标类请求：确认服务已发布且参数匹配后调用", "tool": "data.query_metric",
+     "expect": "rows/rowCount"},
+    {"n": 2, "action": "时间序列类请求", "tool": "data.query_time",
+     "expect": "按时间列的 rows"},
+    {"n": 3, "action": "分页类请求：传 page/pageSize 读 totalRows", "tool": "data.query_page",
+     "expect": "rows/totalRows"}
+  ],
+  "failWhen": [
+    {"if": "服务未发布", "then": "说明只能查已发布快照，开发态服务不返回数据"},
+    {"if": "参数与发布定义不符", "then": "指出不匹配的具体参数，不猜测默认值硬调"},
+    {"if": "rowCount 触及上限（如 200 行截断）", "then": "如实说明截断口径，不暗示拿到全量"}
+  ]
+}

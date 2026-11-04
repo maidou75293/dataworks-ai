@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-quality-fail-handling",
+  "module": "quality",
+  "title": "质检失败处置",
+  "goal": "先看最近一次规则结果与 detail 判定依据，失败项优先；修数据/改规则只出申请，助手不改规则不重跑。",
+  "source": "docs/质量门禁-D46-语义与可见性-20261026.md",
+  "steps": [
+    {"n": 1, "action": "查该表最近质量结果", "tool": "list_quality_results",
+     "expect": "results 含规则名/业务日期/passed/detail"},
+    {"n": 2, "action": "按 passed 分组汇总失败项并读 detail", "tool": "platform.quality",
+     "expect": "失败判定依据逐条可引用"},
+    {"n": 3, "action": "确认规则对象表的口径（字段/分区）", "tool": "catalog.describe_table",
+     "expect": "表结构与规则目标一致"},
+    {"n": 4, "action": "需要修数据或改规则时生成变更申请", "tool": "request_change",
+     "expect": "申请 id + PENDING_APPROVAL"}
+  ],
+  "failWhen": [
+    {"if": "没有结果", "then": "说明该规则尚未运行，不判“通过”"},
+    {"if": "用户问规则本身是否合理", "then": "只转述 detail 判定依据，不自行评价规则"},
+    {"if": "用户要求重跑规则", "then": "重跑是写操作，给调度页路径或生成申请"}
+  ]
+}

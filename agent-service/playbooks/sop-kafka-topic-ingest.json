@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "sop-kafka-topic-ingest",
+  "module": "sync",
+  "title": "Kafka 主题接入落库",
+  "goal": "把 Kafka topic（如 demo_orders）接入并落到目标表的链路：定源、定 topic、建任务、回查落库行数。",
+  "source": "docs/表管理与模拟数据-20261025.md",
+  "steps": [
+    {"n": 1, "action": "确认 KAFKA 数据源（kafka_demo，集群内 kafka-demo.dw-dev.svc.cluster.local:9092）", "tool": "list_datasources",
+     "expect": "返回该源 id 与地址"},
+    {"n": 2, "action": "核对目标表结构与字段映射", "tool": "catalog.describe_table",
+     "expect": "字段清单与消息字段对齐"},
+    {"n": 3, "action": "五槽位（topic=demo_orders 等）+确认后建任务", "tool": "platform.create_task",
+     "expect": "任务 id"},
+    {"n": 4, "action": "确认后运行并回查平台与实时状态", "tool": "get_sync_task_status",
+     "expect": "lastStatus/jobLiveStatus 与落库结果"}
+  ],
+  "failWhen": [
+    {"if": "topic 无消息", "then": "先确认 demo_orders 已灌数（100 条口径），不新建任务重试"},
+    {"if": "连接被拒", "then": "报集群内地址与 Kafka 单节点（KRaft）状态，交运维排查，不改 bootstrap 配置"},
+    {"if": "运行失败", "then": "转“同步任务失败排查”链"}
+  ]
+}

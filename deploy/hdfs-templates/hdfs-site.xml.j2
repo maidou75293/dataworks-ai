@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<configuration>
+  <property><name>dfs.replication</name><value>3</value></property>
+  <property><name>dfs.namenode.name.dir</name><value>{{ hdfs_data_dir }}/namenode</value></property>
+  <property><name>dfs.datanode.data.dir</name><value>{{ hdfs_data_dir }}/datanode</value></property>
+  <property><name>dfs.namenode.rpc-address</name><value>{{ hdfs_namenode_ip }}:9000</value></property>
+  <property><name>dfs.namenode.rpc-bind-host</name><value>0.0.0.0</value></property>
+  <property><name>dfs.namenode.http-address</name><value>{{ hdfs_namenode_ip }}:9870</value></property>
+  <property><name>dfs.namenode.http-bind-host</name><value>0.0.0.0</value></property>
+  <property><name>dfs.datanode.address</name><value>0.0.0.0:9866</value></property>
+  <property><name>dfs.datanode.http.address</name><value>0.0.0.0:9864</value></property>
+  <property><name>dfs.datanode.hostname</name><value>{{ k3s_node_ip }}</value></property>
+  <property><name>dfs.webhdfs.enabled</name><value>true</value></property>
+  <property><name>dfs.permissions.enabled</name><value>false</value></property>
+  <property><name>dfs.namenode.datanode.registration.ip-hostname-check</name><value>false</value></property>
+</configuration>

@@ -1,0 +1,228 @@
+# 网络白名单（Ingress NetworkPolicy）
+#
+# 目标：Doris FE 的 9030/8030 与 Spark Thrift 的 10000 只对平台内部已知客户端开放，
+#       其余 Pod（含其它命名空间）默认拒绝。
+#
+# ---------------------------------------------------------------------------
+# 1. 生效范围（先读这段）
+# ---------------------------------------------------------------------------
+# NetworkPolicy 是「叠加式白名单」：只对 podSelector 选中的 Pod 生效；一旦某个 Pod
+# 被某条 Ingress 策略选中，它的入站流量就变成「默认拒绝 + 显式放行」。
+# 未被选中的 Pod（例如 doris-be）不受任何影响——本文件**故意不选 doris-be**，
+# 因为 BE 的 8040/9050/9060/8060 还要承接 FE 心跳、Stream Load 写入、副本同步，
+# 漏一个客户端就会掉副本，本轮不冒这个险。
+#
+# 2. hostNetwork 的已知不确定性（必须实测）
+# ---------------------------------------------------------------------------
+# doris-fe 是 hostNetwork Pod（Pod IP 就是首节点 IP，见 05-doris-k8s.yaml）。
+# Kubernetes 官方语义没有规定 hostNetwork Pod 的 NetworkPolicy 行为，各 CNI 实现
+# 不一致：k3s 内置的 netpol controller（kube-router）是在 Pod 的 veth 上编程 iptables，
+# 而 hostNetwork Pod 没有独立 veth，**很可能不生效**。
+# 因此本文件照需求声明 doris-fe-ingress，但「是否真的拦住」以实测为准：
+#   python -I scripts/e2e/network-policy-test.py
+# 如果从 default 命名空间仍能连上 9030/8030，脚本会如实报 FAIL——这不是脚本错，
+# 而是 hostNetwork 策略未生效。此时只能靠 Doris 账号/IP 白名单或改 pod 网络部署。
+# Spark Thrift（dw-spark，pod 网络）不受这个限制，策略应当直接生效。
+#
+# 3. DNS 与其他出站
+# ---------------------------------------------------------------------------
+# 本文件只有 Ingress 策略，完全不碰出站流量，kube-system 的 DNS 53 不受影响。
+# 将来若给 Pod 加 Egress 默认拒绝，必须放行 DNS，且要放行该 Pod 的全部既有出站依赖，
+# 否则会整体不可用。模板见文件末尾的注释块（默认注释掉，不要直接启用）。
+#
+# 4. 部署路径
+# ---------------------------------------------------------------------------
+#   手工/运维：bash scripts/ops/network-policy-apply.sh（server dry-run → apply →
+#              健康检查 + 查询冒烟 → 失败自动回滚）
+#   Ansible： 需要把本文件名追加到 deploy/inventory/group_vars/all.yml 的
+#              platform_manifests（建议放在 18-mock-data.yaml 之后）。
+#              该文件本轮不在允许改动范围，未改，需部署方补一行。
+#
+# 5. 回滚
+# ---------------------------------------------------------------------------
+#   kubectl delete -f deploy/k8s/18-network-policy.yaml
+#   （或 bash scripts/ops/network-policy-apply.sh --rollback）
+#   删除后立即回到「全部放行」的基线。
+# ---------------------------------------------------------------------------
+
+# Doris FE：9030（MySQL 协议）/ 8030（HTTP，Stream Load、FE 指标）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: doris-fe-ingress
+  namespace: dw-dev
+  labels:
+    app.kubernetes.io/part-of: dataworks
+    app.kubernetes.io/component: network-whitelist
+spec:
+  podSelector:
+    matchLabels:
+      app: doris-fe
+  policyTypes:
+    - Ingress
+  ingress:
+    # (a) FE/BE 内部：FE↔BE 全端口。
+    #     9020 FE 选主/BDBJE、9010 FE RPC、9050 BE 心跳、8040 BE Web、9060 BE 副本……
+    #     这些端口会随 Doris 版本变化，所以这一条不写 ports（全放行）。
+    - from:
+        - podSelector:
+            matchLabels:
+              app: doris-fe
+        - podSelector:
+            matchLabels:
+              app: doris-be
+
+    # (b) 平台内 Doris 客户端（同命名空间 dw-dev），全端口。
+    #
+    # 为什么不止 dataworks-backend（需求点名）：
+    #   平台的真实查询链路是 backend -> mcp -> Doris（MCP 持有 Doris 连接池），
+    #   只放 backend 会把平台查询直接砍掉；Gravitino 用 Doris Catalog 做元数据、
+    #   Prefect Pool Worker 跑 SQL 任务、SeaTunnel/Flink 是同步与流开发的数据通道，
+    #   Prometheus 抓 FE 指标，mock-data 用 8030 做 Stream Load。
+    #   逐条依据见 docs/运维-网络白名单-20261026.md 的「为什么超出点名范围」。
+    # 全端口而不是只开 9030/8030：后端与 Spark/Flink 还走 Stream Load（8030）与
+    #   Doris 内部端口，写死端口号在升级时会静默断链。
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dataworks-backend
+        - podSelector:
+            matchLabels:
+              app: mcp
+        - podSelector:
+            matchLabels:
+              app: gravitino
+        - podSelector:
+            matchLabels:
+              app: prefect-pool-worker
+        - podSelector:
+            matchLabels:
+              app: seatunnel
+        - podSelector:
+            matchLabels:
+              app: flink-jobmanager
+        - podSelector:
+            matchLabels:
+              app: flink-taskmanager
+        - podSelector:
+            matchLabels:
+              app: flink-prod-jobmanager
+        - podSelector:
+            matchLabels:
+              app: flink-prod-taskmanager
+        - podSelector:
+            matchLabels:
+              app: flink-sql-gateway
+        - podSelector:
+            matchLabels:
+              app: flink-prod-sql-gateway
+        - podSelector:
+            matchLabels:
+              app: prometheus
+        - podSelector:
+            matchLabels:
+              app: mock-data
+
+    # (c) dw-spark 的 Spark Thrift / Executor（跨命名空间，必须 namespaceSelector+podSelector）
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dw-spark
+          podSelector:
+            matchLabels:
+              app: spark-thrift
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dw-spark
+          podSelector:
+            matchLabels:
+              app: spark-executor
+
+    # (d) 节点流量：kubelet 的 readiness/liveness 探针、node-exporter、hostNetwork BE。
+    #     节点网段=首节点前两段推导 /16（${DW_NODE_CIDR}，见 group_vars）；
+    #     Pod 网段是 10.42.0.0/16，两者不重叠，所以这条不会顺带把 Pod 放进来。
+    - from:
+        - ipBlock:
+            cidr: ${DW_NODE_CIDR}
+---
+# Spark Thrift Server（dw-spark）：HiveServer2 10000
+#
+# 关键点：driver 的 RPC / BlockManager 端口（默认 7078/7079，还可能是动态端口）
+# 由 executor 回连，必须全端口放行 executor，只放 10000 会让所有 Spark SQL 挂掉。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spark-thrift-ingress
+  namespace: dw-spark
+  labels:
+    app.kubernetes.io/part-of: dataworks
+    app.kubernetes.io/component: network-whitelist
+spec:
+  podSelector:
+    matchLabels:
+      app: spark-thrift
+  policyTypes:
+    - Ingress
+  ingress:
+    # (a) executor -> driver：RPC 7078、BlockManager 7079 等，全端口。
+    - from:
+        - podSelector:
+            matchLabels:
+              app: spark-executor
+
+    # (b) 平台唯一业务客户端：后端（SQL 节点走 Thrift）访问 10000（dw-dev 跨命名空间）。
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dw-dev
+          podSelector:
+            matchLabels:
+              app: dataworks-backend
+      ports:
+        - protocol: TCP
+          port: 10000
+
+    # (c) kubelet 的 TCP 探针来自节点 IP（${DW_NODE_CIDR} 网段）。不放行会让
+    #     startup/readiness/liveness 全部失败，driver 反复重启。
+    - from:
+        - ipBlock:
+            cidr: ${DW_NODE_CIDR}
+      ports:
+        - protocol: TCP
+          port: 10000
+
+    # Spark UI 不开放：17c-spark.yaml 里 spark.ui.enabled=false，没有 4040。
+    # 若未来打开 UI，需要在这里补一条 4040 放行（来源建议限定 backend/运维网段），
+    # 否则页面会打不开，但不影响 SQL。
+---
+# ---------------------------------------------------------------------------
+# 【模板，勿启用】Egress 默认拒绝 + DNS 放行
+#
+# 本轮只做 Ingress。原因：给 Pod 加 Egress 默认拒绝会同时切断 DNS、Postgres、
+# MinIO、Kafka、Flink、宿主 NodePort 等所有既有出站依赖，漏一条就是整条链路挂。
+# 真要上 Egress 时，逐个命名空间做，并至少保留下面这条 DNS 放行：
+#
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: default-deny-egress
+#   namespace: <ns>
+# spec:
+#   podSelector: {}
+#   policyTypes: [Egress]
+#   egress:
+#     - to:
+#         - namespaceSelector:
+#             matchLabels:
+#               kubernetes.io/metadata.name: kube-system
+#       ports:
+#         - protocol: UDP
+#           port: 53
+#         - protocol: TCP
+#           port: 53
+#     # 之后按实际依赖继续追加：postgres:5432、minio:9000、kafka:9092、
+#     # spark-thrift:10000、doris-fe:9030/8030、宿主 NodePort 等。
+#
+# 验收钩子：启用任何 Egress 策略前，先跑 scripts/e2e/network-policy-test.py
+# 记录当前基线，再逐条加白，任何一步 CLOSED 就回滚。
+# ---------------------------------------------------------------------------

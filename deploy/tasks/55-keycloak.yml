@@ -1,0 +1,98 @@
+---
+# Keycloak：realm + 两个 client。幂等，已存在就跳过。
+- name: 读密钥
+  ansible.builtin.include_vars:
+    file: "{{ platform_secrets_file }}"
+    name: platform_secrets
+
+- name: 取管理员令牌
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ platform_secrets.keycloak.adminUser }}"
+      password: "{{ platform_secrets.keycloak.adminPassword }}"
+  register: kc_token
+  retries: 30
+  delay: 5
+  until: kc_token.status == 200
+  no_log: true
+
+- name: 查 realm
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/admin/realms/{{ keycloak_realm }}"
+    headers:
+      Authorization: "Bearer {{ kc_token.json.access_token }}"
+    status_code: [200, 404]
+  register: kc_realm
+
+- name: 建 realm
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/admin/realms"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ kc_token.json.access_token }}"
+    body_format: json
+    body:
+      realm: "{{ keycloak_realm }}"
+      enabled: true
+      displayName: DataWorks
+      sslRequired: none
+    status_code: [201, 409]
+  when: kc_realm.status == 404
+
+- name: 查 dataworks-web
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/admin/realms/{{ keycloak_realm }}/clients?clientId={{ keycloak_web_client }}"
+    headers:
+      Authorization: "Bearer {{ kc_token.json.access_token }}"
+  register: kc_web
+
+- name: 建 dataworks-web（公开客户端）
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/admin/realms/{{ keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ kc_token.json.access_token }}"
+    body_format: json
+    body:
+      clientId: "{{ keycloak_web_client }}"
+      publicClient: true
+      standardFlowEnabled: true
+      directAccessGrantsEnabled: true
+      redirectUris:
+        - "http://{{ platform_health_host }}:30090/*"
+        - "http://data-ai-agent.com/*"
+      webOrigins:
+        - "+"
+        - "http://{{ platform_health_host }}:30090"
+        - "http://data-ai-agent.com"
+    status_code: [201, 409]
+  when: kc_web.json | length == 0
+
+- name: 查 mcp-gateway
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/admin/realms/{{ keycloak_realm }}/clients?clientId={{ keycloak_mcp_client }}"
+    headers:
+      Authorization: "Bearer {{ kc_token.json.access_token }}"
+  register: kc_mcp
+
+- name: 建 mcp-gateway（机密客户端）
+  ansible.builtin.uri:
+    url: "{{ keycloak_url }}/admin/realms/{{ keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ kc_token.json.access_token }}"
+    body_format: json
+    body:
+      clientId: "{{ keycloak_mcp_client }}"
+      publicClient: false
+      secret: "{{ platform_secrets.internal.keycloakClientSecret }}"
+      serviceAccountsEnabled: true
+      directAccessGrantsEnabled: false
+    status_code: [201, 409]
+  when: kc_mcp.json | length == 0
+  no_log: true

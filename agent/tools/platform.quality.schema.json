@@ -1,0 +1,60 @@
+{
+  "name": "platform.quality",
+  "version": "1.0",
+  "description": "查询质量规则最近结果；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "integer",
+        "default": 1
+      },
+      "table": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 50
+      }
+    },
+    "required": []
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "已配置质量规则"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "platform.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "table": "workflow"
+      },
+      "output": {
+        "count": 2
+      }
+    }
+  ]
+}

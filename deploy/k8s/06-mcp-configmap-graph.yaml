@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-graph
+  namespace: dw-dev
+data:
+  graph.json: |
+    {
+      "version": 1,
+      "nodes": [
+        {
+          "id": "catalog.explore",
+          "version": 1,
+          "title": "元数据目录探查",
+          "intent": "用户想了解平台有哪些数据源、库、表以及表结构，基于 Gravitino 元数据回答",
+          "tools": [
+            "catalog.list",
+            "catalog.list_schemas",
+            "catalog.list_tables",
+            "catalog.describe_table"
+          ],
+          "preconditions": [
+            "user.authorized"
+          ],
+          "prompt": "你是元数据目录助手。\n1. 不知道有哪些 catalog 时先调 catalog.list，不要猜名字。\n2. 逐级下钻：catalog.list_schemas → catalog.list_tables → catalog.describe_table。\n3. 回答必须引用真实的 catalog/schema/table 名称；查不到就说“没有找到”，不要编造表名。\n4. 用户要查询数据内容时交给 doris.sql_query，元数据工具不返回数据行。\n",
+          "examples": [
+            {
+              "input": "kb_dev 里有哪些表？",
+              "expected_tools": [
+                "catalog.list",
+                "catalog.list_schemas",
+                "catalog.list_tables"
+              ],
+              "expected_output": "tables 包含 kb_chunk"
+            },
+            {
+              "input": "kb_chunk 有哪些字段？",
+              "expected_tools": [
+                "catalog.describe_table"
+              ],
+              "expected_output": "chunk_id/version/kb_id/doc_id 等 10 个字段"
+            }
+          ],
+          "evals": [
+            {
+              "case": "不编造表名",
+              "assert": "回答中的表名全部来自 catalog.list_tables 返回"
+            },
+            {
+              "case": "未知 catalog",
+              "assert": "catalog 不存在时返回 CATALOG_OBJECT_NOT_FOUND，不臆造 schema"
+            }
+          ],
+          "edges": [
+            {
+              "to": "kb.search",
+              "when": "用户从元数据转入内容检索"
+            }
+          ]
+        },
+        {
+          "id": "kb.ingest",
+          "version": 1,
+          "title": "文档入库",
+          "intent": "把一篇文档切块、生成向量并写入知识库，供后续检索",
+          "tools": [
+            "kb.ingest",
+            "embed.query"
+          ],
+          "preconditions": [
+            "kb.exists",
+            "user.authorized"
+          ],
+          "prompt": "你是知识库入库助手。\n1. 校验 doc_id、version、content 必填；content 为空直接拒绝。\n2. 按 chunk_size/overlap 切块，chunk_id 使用 hash(doc_id, version, chunk_no)，保证幂等。\n3. 批量调用 embed.query，is_query=false。\n4. 写入 kb_chunk 时带上 kb_id、doc_id、version、is_current=true、acl_tags。\n5. 已存在相同 (doc_id, version) 时，先追加新版本再失效旧版本，不能产生两份 current。\n",
+          "examples": [
+            {
+              "input": "把《报销制度》v1 入库到 kb_id=1，acl=finance",
+              "expected_tools": [
+                "kb.ingest"
+              ],
+              "expected_output": "chunk_count > 0，status=ok"
+            }
+          ],
+          "evals": [
+            {
+              "case": "重复入库幂等",
+              "assert": "同一 (doc_id, version) 重复执行后，COUNT(*) 不翻倍"
+            },
+            {
+              "case": "空内容拒绝",
+              "assert": "content 为空时返回错误码 KB_EMPTY_CONTENT"
+            }
+          ],
+          "edges": [
+            {
+              "to": "kb.search",
+              "when": "入库成功"
+            }
+          ]
+        },
+        {
+          "id": "kb.search",
+          "version": 1,
+          "title": "知识库语义检索",
+          "intent": "用户想根据自然语言问题查找内部知识库内容，并拿到可追溯的引用",
+          "tools": [
+            "embed.query",
+            "doris.sql_query",
+            "kb.get_chunk"
+          ],
+          "preconditions": [
+            "kb.exists",
+            "user.authorized"
+          ],
+          "prompt": "你是内部知识库检索助手。\n1. 先判断问题是否需要检索；寒暄、纯计算、与知识库无关的问题直接回答，不调用工具。\n2. 需要检索时，调用 embed.query，is_query=true，拿到 512 维归一化向量。\n3. 用向量在 kb_chunk 中做 ANN 检索，必须带 kb_id 与 acl_tags 过滤，只取 is_current=true。\n4. 只返回有权限的片段；每条结果必须带 chunk_id、doc_id、title 引用。\n5. 检索结果为空时明确说“没有找到”，不要编造。\n",
+          "examples": [
+            {
+              "input": "报销标准是多少？",
+              "expected_tools": [
+                "embed.query",
+                "doris.sql_query"
+              ],
+              "expected_output": "带 chunk_id/doc_id/title 的引用，score 降序"
+            },
+            {
+              "input": "你好",
+              "expected_tools": [],
+              "expected_output": "直接问候，不检索"
+            }
+          ],
+          "evals": [
+            {
+              "case": "无权限文档不应出现",
+              "assert": "response.citations 全部通过 acl_tags 过滤"
+            },
+            {
+              "case": "空结果不编造",
+              "assert": "检索为空时回答包含“没有找到”，且 citations 为空"
+            }
+          ],
+          "edges": [
+            {
+              "to": "kb.answer",
+              "when": "检索结果非空"
+            },
+            {
+              "to": "kb.no_result",
+              "when": "检索结果为空"
+            }
+          ]
+        }
+      ]
+    }

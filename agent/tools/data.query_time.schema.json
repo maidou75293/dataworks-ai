@@ -1,0 +1,76 @@
+{
+  "name": "data.query_time",
+  "version": "1.0",
+  "description": "按时间范围查询已发布数据服务；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "page": {
+        "type": "integer",
+        "default": 1
+      },
+      "pageSize": {
+        "type": "integer",
+        "default": 50
+      },
+      "start": {
+        "type": "string"
+      },
+      "end": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "columns": {
+        "type": "array"
+      },
+      "rows": {
+        "type": "array"
+      },
+      "rowCount": {
+        "type": "integer"
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [
+      "服务已发布并绑定数据源"
+    ],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "data.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "INTERNAL_TOKEN_INVALID"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "code": "sales_daily",
+        "start": "2026-10-01",
+        "end": "2026-10-20"
+      },
+      "output": {
+        "rowCount": 10
+      }
+    }
+  ]
+}

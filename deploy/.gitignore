@@ -1,0 +1,24 @@
+# 真实密钥文件不进仓库；示例文件要提交
+secrets/*.yml
+!secrets/*.example.yml
+
+# 控制机本地取回的 kubeconfig
+*.kubeconfig
+
+# 密码模式的真实文件
+inventory/lab-password.yml
+inventory/group_vars/vault.yml
+
+# 同步临时包
+.deploy-sync.tgz
+keys/
+clusters/
+
+# 离线镜像包（GB 级，随部署包拷贝，不进仓库）
+images/
+
+# 宿主锚点/真实网络拓扑不进仓（REQ-OSS-PUBSCRUB-1）：模板已入库
+# env.local.sh = 控制机/节点/crane 实况；lab.yml / existing.yml = 真实 inventory
+env.local.sh
+inventory/lab.yml
+inventory/existing.yml

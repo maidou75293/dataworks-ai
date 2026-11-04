@@ -1,0 +1,81 @@
+{
+  "name": "graph.search",
+  "version": "1.0",
+  "description": "按关键词/意图检索提示词图谱节点；只读。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 5
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "semantics": {
+    "preconditions": [],
+    "sideEffects": "none",
+    "idempotent": true,
+    "permissions": [
+      "graph.read"
+    ],
+    "requiresApproval": false,
+    "errorCodes": [
+      "GRAPH_UNAVAILABLE"
+    ]
+  },
+  "examples": [
+    {
+      "input": {
+        "query": "知识库检索",
+        "limit": 3
+      },
+      "output": {
+        "nodes": [
+          {
+            "id": "kb.search",
+            "title": "知识库语义检索",
+            "intent": "...",
+            "tools": [
+              "embed.query",
+              "doris.vector_search"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

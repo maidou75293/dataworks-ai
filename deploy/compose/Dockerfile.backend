@@ -1,0 +1,17 @@
+# 后端镜像（陌生人可复现：公网基础镜像 + 仓内源码，无作者机路径依赖）
+# build 上下文 = backend/（compose 里 context: ../../backend）
+# 生产 k8s 镜像走 scripts/ci/build-backend-image.sh（前端打进 jar）；compose 形态前后端分离，
+# 前端由 web 容器（nginx）提供，本镜像只含 API。
+FROM docker.io/library/maven:3.9-eclipse-temurin-17 AS build
+WORKDIR /src
+COPY pom.xml settings.xml ./
+# 依赖预取层：加速重复构建；个别插件解析失败不阻断（下一步 package 会补齐）
+RUN mvn -B -q -s settings.xml dependency:go-offline -DskipTests || true
+COPY src ./src
+RUN mvn -B -s settings.xml -DskipTests package
+
+FROM docker.io/library/eclipse-temurin:17-jre-jammy
+WORKDIR /opt/backend
+COPY --from=build /src/target/dataworks-backend-0.1.0.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS:-} -jar /opt/backend/app.jar"]

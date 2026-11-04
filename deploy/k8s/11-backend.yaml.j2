@@ -1,0 +1,360 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dataworks-backend
+  namespace: dw-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dataworks-backend
+  namespace: dw-dev
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    # 系统监控的「服务资源」：读 Deployments/StatefulSets，停止/启动/改副本/改内存
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  # 数据集成：写作业配置 Secret、创建/查询 SeaTunnel 同步 Job、读日志
+  - apiGroups: [""]
+    resources: ["secrets"]
+    # delete：作业结束后清理每作业一份的 conf Secret
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    # 内存右调建议器的应用硬闸：读 ResourceQuota 的 used/hard
+    resources: ["resourcequotas"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # 发布后进入 worker 容器确认 flow 文件已挂载（fabric8 走 WebSocket GET）；
+  # Doris 节点扩缩容也是进 FE 容器执行管理 SQL
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    # create = kubectl exec 的 POST；get = fabric8 WebSocket 升级用的 GET，
+    # 少这个 verb 时 exec 一律 403（Prefect 那个 flow 文件校验因此一直静默失败）
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dataworks-backend
+  namespace: dw-dev
+subjects:
+  - kind: ServiceAccount
+    name: dataworks-backend
+    namespace: dw-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dataworks-backend
+---
+# 节点是集群级资源：Doris BE 的节点级扩缩容要读节点列表、改节点标签
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dataworks-backend-cluster-workloads
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    # 系统监控的「服务资源」跨 namespace 覆盖 dataworks-test-* 夹具
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    # 节点运维：Doris 打标签、cordon/uncordon（patch）、移除节点（delete）
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch", "update", "delete"]
+  - apiGroups: [""]
+    # drain：列出全集群 Pod 并按 Eviction 逐个驱逐（跳过 DaemonSet）
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    # 内存右调建议器：跨命名空间读配额闸（dw-spark / 未来新 ns 同样要能查）
+    resources: ["resourcequotas"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dataworks-backend-cluster-workloads
+subjects:
+  - kind: ServiceAccount
+    name: dataworks-backend
+    namespace: dw-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dataworks-backend-cluster-workloads
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dataworks-backend
+  namespace: dw-dev
+  labels:
+    app: dataworks-backend
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dataworks-backend
+  template:
+    metadata:
+      labels:
+        app: dataworks-backend
+    spec:
+      serviceAccountName: dataworks-backend
+      containers:
+        - name: backend
+          # 镜像钉当前现网版（OPS-DRIFT 口径 git==live）：发布线 release.sh 每次
+          # set image 后应同步这里，否则重新渲染会把现网打回旧版（v413→v555 漂移
+          # 由 REQ-BUG-MOSBRIDGE-1 收口，2026-10-28）。
+          image: {{ dw_registry }}/library/dataworks-backend:v555
+          imagePullPolicy: IfNotPresent
+          command:
+            - /opt/java/bin/java
+            - -jar
+            - /opt/backend/app.jar
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            # 迁移顺序豁免（v535 事故，2026-10-27）：wm3 的 V115 先进了库，wm2 的 V114
+            # 当时还没提交，补上后成为「115 已应用、114 后应用」的乱序历史；不加这项
+            # Flyway 拒绝启动，v535 首次上线即 CrashLoopBackOff。
+            # 现网当时是用 kubectl set env 救活的，仓库清单里没有 → 每次重新渲染都会漂回崩溃，
+            # 故固化在此。全新空库按序应用不受影响。
+            # 长期解法：泳道合并完再统一发版，别让跨泳道迁移抢跑。
+            - name: SPRING_FLYWAY_OUT_OF_ORDER
+              value: "true"
+            # 监控读取的命名空间（逗号分隔）。Spark 常驻在 dw-spark，
+            # 只写 dw-dev 会让监控页看不到 spark-thrift。
+            # 2026-11-03 补 kube-system：入口组件（traefik）卡死 34 分钟时
+            # 页面「异常 Pod=0」——不在监控范围的平台依赖等于盲区。
+            - name: PLATFORM_MONITOR_NAMESPACES
+              value: "dw-dev,dw-spark,kube-system"
+            - name: DB_HOST
+              value: postgres.dw-dev.svc.cluster.local
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: dataworks_dev
+            - name: DB_USER
+              value: dataworks
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: PREFECT_BRIDGE_URL
+              value: http://prefect-bridge.dw-dev.svc.cluster.local:4300
+            - name: MCP_BASE_URL
+              value: http://mcp.dw-dev.svc.cluster.local:8080
+            # 新建项目时建 Doris 库（gongxiang_dev / gongxiang_prd）
+            - name: DORIS_HOST
+              value: doris-fe.dw-dev.svc.cluster.local
+            - name: DORIS_PORT
+              value: "9030"
+            - name: DORIS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_USER
+            - name: DORIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-credentials
+                  key: DORIS_PASSWORD
+            # 元数据通道（Gravitino 内置 Catalog）专用只读账号；Secret 缺失时
+            # optional=true 让 Pod 正常启动，代码回落业务账号（老集群兼容）。
+            - name: DORIS_META_RO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: doris-meta-ro-credentials
+                  key: DORIS_META_RO_USER
+                  optional: true
+            - name: DORIS_META_RO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: doris-meta-ro-credentials
+                  key: DORIS_META_RO_PASSWORD
+                  optional: true
+            # 项目存储后端：S3(MinIO) 建前缀；Doris 冷热分离的远端 Resource 也用它
+            - name: S3_ENDPOINT
+              value: http://minio.dw-dev.svc.cluster.local:9000
+            - name: S3_BUCKET
+              value: warehouse
+            # 多模态预签名给浏览器用：集群内 DNS 在用户机器上解析不了，
+            # 指向 MinIO 的 NodePort（minio-external:30900）
+            - name: ASSET_S3_PUBLIC_ENDPOINT
+              value: http://{{ dw_node1_ip | trim }}:30900
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_USER
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ROOT_PASSWORD
+            # 单节点 HDFS（06-hdfs.yaml）；WebHDFS 9870
+            - name: HDFS_WEBHDFS_URL
+              value: {{ hdfs_webhdfs_url }}
+            # 数据集成作业的引擎镜像：必须走私有仓库。节点把 docker.io 转发到外部源，
+            # 拉 docker.io/library/seatunnel:dev 会被外部源 403 拒绝。
+            - name: SEATUNNEL_IMAGE
+              value: {{ dw_registry }}/library/seatunnel:dev
+            # FlinkSQL 流开发：SQL Gateway 负责执行语句，JobManager REST 负责看/停作业
+            - name: FLINK_GATEWAY_URL
+              value: http://flink-sql-gateway.dw-dev.svc.cluster.local:8083
+            - name: FLINK_REST_URL
+              value: http://flink-jobmanager.dw-dev.svc.cluster.local:8081
+            - name: MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-auth
+                  key: MCP_TOKEN
+            - name: PLATFORM_PUBLIC_URL
+              value: http://data-ai-agent.com
+            - name: PLATFORM_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: PLATFORM_SECRET_KEY
+            - name: PLATFORM_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: PLATFORM_INTERNAL_TOKEN
+            # REQ-OPS-ROTATE-1（2026-10-28）：C1 内置 ADMIN 走 Secret 注入（默认口令
+            # `:admin` 线上不再可达）；C5 助手互信令牌独立，不再回退内部 token。
+            - name: PLATFORM_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: PLATFORM_ADMIN_PASSWORD
+            - name: AGENT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-keys
+                  key: AGENT_SERVICE_TOKEN
+            # REQ-BUG-MOSBRIDGE-1（2026-10-28）桥接（platform.mos.*，application.yml:144-151）。
+            # BUG-MOS-MIGRATE-1（2026-11-04）改指集群内：旧形态「portproxy 宿主网关:8090→
+            # WSL systemd modelonestation」随 WSL 卸载连根消失，模型板块整块 502（业主信箱
+            # seq=42）。10-28「不为桥接单独拉起 mos」的裁决前提是宿主常驻位可靠——该前提
+            # 已死，现落点定版 k8s：Service modelonestation-app.dw-dev:8090（清单
+            # mos/platform/k8s/app.yaml，镜像 <私有仓库>/library/modelonestation-backend，
+            # 构建发布 scripts/ci/build-mos-image.sh，自愈常驻不再「住别人家」）。
+            # 唯一脑纪律不变：禁止再起宿主第二脑；数据正本=集群 PVC（种子=迁移时
+            # 主仓 mos/platform/data）。EgressPolicy 从 base-url 同源自动追加白名单
+            # （common/EgressPolicy.java），无需改 PLATFORM_EGRESS_ALLOW。
+            # svc-dataworks 口令仍走 mos-credentials Secret（库内 users 表哈希迁移保号）。
+            # 值走 group_vars mos_base_url 参数化正本（REQ-OSS-PUBSCRUB-1 契约形，发布面零 IP 字面）。
+            - name: MOS_BASE_URL
+              value: "{{ mos_base_url }}"
+            - name: MOS_SVC_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mos-credentials
+                  key: MOS_SVC_USER
+            - name: MOS_SVC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mos-credentials
+                  key: MOS_SVC_PASSWORD
+            # 线上作业跑独立的 PROD Flink 集群（17b-flink-prod.yaml）；不配则退回 DEV 集群
+            - name: FLINK_PROD_REST_URL
+              value: http://flink-prod-jobmanager.dw-dev.svc.cluster.local:8081
+            - name: FLINK_PROD_GATEWAY_URL
+              value: http://flink-prod-sql-gateway.dw-dev.svc.cluster.local:8083
+            - name: KEYCLOAK_URL
+              value: {{ keycloak_url }}
+            - name: KEYCLOAK_REALM
+              value: dataworks
+            - name: KEYCLOAK_SSO_CLIENT_ID
+              value: dataworks-web
+            - name: KEYCLOAK_INTROSPECT_CLIENT_ID
+              value: mcp-gateway
+            - name: KEYCLOAK_INTROSPECT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-client
+                  key: KC_CLIENT_SECRET
+            # REQ-OSS-SEC-CLEAN-1（开源清密）：主代码默认值已全部改为占位（127.0.0.1），
+            # 内网真实入口一律由部署侧显式注入；缺本段的集群=按占位运行，不再泄露内网拓扑。
+            # 对话智能体服务（后端 AgentChatController/AgentModelConfigController 调用）
+            - name: AGENT_SERVICE_URL
+              value: "http://{{ registry_host }}:8097"
+            # JdbcUrlGuard 出网白名单追加项：PG NodePort 与 Doris FE MySQL 协议口
+            # （原内置于代码白名单，现移出；svc.cluster.local 名单仍在 application.yml 默认值）
+            - name: PLATFORM_EGRESS_ALLOW
+              value: "{{ registry_host }}:30432,{{ registry_host }}:9030"
+            # PlatformInternalDb 保留端点：PG NodePort 形态入口也要被识别为平台元数据库
+            - name: PLATFORM_INTERNAL_DB_ENDPOINTS
+              value: "{{ registry_host }}:30432"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            # 本地文件采集：与 SeaTunnel 作业 Pod 共享同一份目录，平台侧才能做文件级增量
+            - name: local-shared
+              mountPath: /data/local
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: local-shared
+          persistentVolumeClaim:
+            claimName: local-shared
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dataworks-backend
+  namespace: dw-dev
+  labels:
+    app: dataworks-backend
+spec:
+  type: NodePort
+  selector:
+    app: dataworks-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30090

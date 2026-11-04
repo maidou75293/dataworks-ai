@@ -1,0 +1,118 @@
+# FTP 连接器测试服务：busybox tcpsvd + ftpd，用户 ftp/test123。
+# 数据目录用 emptyDir，initContainer 写入 assets.csv，ftpd 开 -w 允许汇端上传。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dataworks-test-ftp
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ftp-auth
+  namespace: dataworks-test-ftp
+data:
+  passwd: |
+    root:x:0:0:root:/root:/bin/sh
+    ftp:x:1000:1000:ftp:/home/ftp:/bin/sh
+  shadow: |
+    root:*:19000:0:99999:7:::
+    ftp:ftpdemo:19000:0:99999:7:::
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ftp-test
+  namespace: dataworks-test-ftp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ftp-test
+  template:
+    metadata:
+      labels:
+        app: ftp-test
+    spec:
+      initContainers:
+        - name: seed
+          image: docker.io/rancher/mirrored-library-busybox:1.37.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              printf 'id,name,size_bytes\n1,ftp-a,101\n2,ftp-b,202\n3,ftp-c,303\n' > /data/assets.csv
+              chmod 666 /data/assets.csv
+              mkdir -p /data/upload
+              chmod 777 /data/upload
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: ftpd
+          image: docker.io/rancher/mirrored-library-busybox:1.37.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - exec tcpsvd -vE 0.0.0.0 21 ftpd -w -vv /home/ftp
+          ports:
+            - containerPort: 21
+              name: ftp
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: data
+              mountPath: /home/ftp
+            - name: passwd
+              mountPath: /etc/passwd
+              subPath: passwd
+            - name: shadow
+              mountPath: /etc/shadow
+              subPath: shadow
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: passwd
+          configMap:
+            name: ftp-auth
+            items:
+              - key: passwd
+                path: passwd
+        - name: shadow
+          configMap:
+            name: ftp-auth
+            items:
+              - key: shadow
+                path: shadow
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ftp-test
+  namespace: dataworks-test-ftp
+spec:
+  selector:
+    app: ftp-test
+  ports:
+    - name: ftp
+      port: 21
+      targetPort: 21
+---
+# 被动模式数据连接直接打 Pod IP；ClusterIP Service 会让客户端连到 Service IP:被动端口而超时。
+apiVersion: v1
+kind: Service
+metadata:
+  name: ftp-test-headless
+  namespace: dataworks-test-ftp
+spec:
+  clusterIP: None
+  selector:
+    app: ftp-test
+  ports:
+    - name: ftp
+      port: 21
+      targetPort: 21

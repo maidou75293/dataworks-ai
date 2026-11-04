@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dw-dev
+  labels:
+    app.kubernetes.io/part-of: dataworks
+    env: dev
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dw-dev-quota
+  namespace: dw-dev
+spec:
+  hard:
+    # 同步 Job 每次要 200m/512Mi 请求、1c/1Gi 上限。
+    # limits.cpu 40 在多副本 backend（每个 1c）+ 一个 Job 时会打满，导致 Job Pod 创建被拒
+    # （实测 sync-multirep-test 卡住 5 分钟），这里留出 2 个副本 + 2 个 Job 的余量。
+    requests.cpu: "18"
+    # 流开发 PROD 集群占 512Mi 请求；30Gi 打满时新增 Pod 会 FailedCreate（实测）。
+    # REQ-OPS-ROTATE-1（20261028）：滚动重启轮换消费方时旧 Pod 未退、新 Pod requests 进不来，
+    # 31Gi/30880Mi 已满 → keycloak 新 Pod FailedCreate、rollout 超时。提到 34Gi
+    # （≈3 节点可分配上限，留 ~2Gi 单 Pod 尖峰余量）；limits 相应 64→72Gi（可超售）。
+    requests.memory: 34Gi
+    limits.cpu: "48"
+    limits.memory: 72Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dw-dev-defaults
+  namespace: dw-dev
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "1"
+        memory: 1Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi

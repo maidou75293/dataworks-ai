@@ -1,0 +1,163 @@
+# Apache Gravitino 1.3.1: metadata lakehouse catalog over Doris / PostgreSQL / MinIO.
+# Entity store lives in PostgreSQL (`gravitino_dev`); the JDBC password comes from
+# the `gravitino-conf` Secret created outside git (D:/lab/dev-secrets-gravitino.yaml).
+# Upstream log4j2.properties logs to files only, so `kubectl logs` shows nothing.
+# Mirror the root logger to stdout as well.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gravitino-log4j2
+  namespace: dw-dev
+data:
+  log4j2.properties: |
+    status = warn
+    property.basePath = ${sys:gravitino.log.path}
+    property.serverName = ${sys:gravitino.server.name}
+
+    appender.rolling.type = RollingFile
+    appender.rolling.name = fileLogger
+    appender.rolling.fileName = ${basePath}/${serverName}.log
+    appender.rolling.filePattern = ${basePath}/${serverName}_%d{yyyyMMdd}.log.gz
+    appender.rolling.layout.type = PatternLayout
+    appender.rolling.layout.pattern = %d{yyyy-MM-dd HH:mm:ss.SSS} %level [%t] [%l] - %msg%n
+    appender.rolling.policies.type = Policies
+    appender.rolling.policies.size.type = SizeBasedTriggeringPolicy
+    appender.rolling.policies.size.size = 10MB
+
+    appender.console.type = Console
+    appender.console.name = console
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss.SSS} %level [%t] - %msg%n
+
+    logger.rest.name = org.apache.gravitino.server.web.rest
+    logger.rest.level = warn
+    logger.rest.appenderRef.rolling.ref = fileLogger
+    logger.rest.appenderRef.console.ref = console
+    logger.rest.additivity = false
+
+    rootLogger.level = info
+    rootLogger.appenderRef.rolling.ref = fileLogger
+    rootLogger.appenderRef.console.ref = console
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gravitino
+  namespace: dw-dev
+  labels:
+    app: gravitino
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gravitino
+  template:
+    metadata:
+      labels:
+        app: gravitino
+    spec:
+      containers:
+        - name: gravitino
+          # 私有镜像库：节点重调度后不再依赖本机是否 import 过镜像
+          image: ${DW_REGISTRY}/library/gravitino:dev
+          imagePullPolicy: IfNotPresent
+          # The shared JDK base image ships bash but no libtinfo/coreutils, so
+          # bin/gravitino.sh cannot run (`libtinfo.so.6: cannot open shared
+          # object file`). Launch the main class directly instead; the server
+          # resolves its config from $GRAVITINO_CONF_DIR / $GRAVITINO_HOME.
+          command:
+            - /opt/java/bin/java
+          args:
+            - -Dfile.encoding=UTF-8
+            - -Dlog4j2.configurationFile=file:///opt/gravitino/conf/log4j2.properties
+            - -Dgravitino.log.path=/opt/gravitino/logs
+            - -Dgravitino.server.name=gravitino-server
+            - -Xms512m
+            - -Xmx1024m
+            - -XX:MaxMetaspaceSize=512m
+            - --add-opens=java.base/java.lang=ALL-UNNAMED
+            - --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+            - --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
+            - --add-opens=java.base/java.nio=ALL-UNNAMED
+            - --add-opens=java.base/java.util=ALL-UNNAMED
+            - --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+            - --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+            - --add-opens=java.sql/java.sql=ALL-UNNAMED
+            - -cp
+            - /opt/gravitino/libs/*:/opt/gravitino/conf
+            - org.apache.gravitino.server.GravitinoServer
+          env:
+            - name: JAVA_HOME
+              value: /opt/java
+            - name: GRAVITINO_HOME
+              value: /opt/gravitino
+            - name: GRAVITINO_CONF_DIR
+              value: /opt/gravitino/conf
+            - name: GRAVITINO_LOG_DIR
+              value: /opt/gravitino/logs
+            # The JDK base image has no /etc/passwd; Hadoop's UnixLoginModule
+            # then fails with `invalid null input: name` when opening s3a.
+            - name: HADOOP_USER_NAME
+              value: root
+          ports:
+            - name: http
+              containerPort: 8090
+          resources:
+            requests:
+              # 实测用量 ~1m：500m 的申请会把紧张节点的 CPU requests 顶满
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8090
+            initialDelaySeconds: 25
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8090
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: conf
+              mountPath: /opt/gravitino/conf/gravitino.conf
+              subPath: gravitino.conf
+            - name: log4j2
+              mountPath: /opt/gravitino/conf/log4j2.properties
+              subPath: log4j2.properties
+            - name: logs
+              mountPath: /opt/gravitino/logs
+      volumes:
+        - name: conf
+          secret:
+            secretName: gravitino-conf
+        - name: log4j2
+          configMap:
+            name: gravitino-log4j2
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gravitino
+  namespace: dw-dev
+  labels:
+    app: gravitino
+spec:
+  type: NodePort
+  selector:
+    app: gravitino
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+      nodePort: 30093
