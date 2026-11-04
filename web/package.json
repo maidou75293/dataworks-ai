@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ant-design/icons": "^5.5.1",
+    "@ant-design/icons": "^6.3.4",
     "antd": "^5.22.2",
     "dayjs": "^1.11.13",
     "echarts": "^6.1.0",
