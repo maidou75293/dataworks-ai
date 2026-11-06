@@ -39,7 +39,7 @@ spec:
       # Neo4j 会把它们当成配置项并在严格校验下启动失败。
       enableServiceLinks: false
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       containers:
         - name: neo4j
           image: docker.io/library/neo4j:5.20

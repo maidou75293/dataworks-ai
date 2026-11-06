@@ -1,6 +1,6 @@
 # 本地文件采集的共享卷。
 # 原方案用 NFS server（RWX），镜像无法离线导入，这里改成 local-path PVC（RWO）。
-# backend 已固定调度到 dw-k8s-1；后续如果要跨节点共享，再换回 NFS/对象存储。
+# backend 已固定调度到 k8s-node-1；后续如果要跨节点共享，再换回 NFS/对象存储。
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

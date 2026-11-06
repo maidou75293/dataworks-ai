@@ -37,7 +37,7 @@ spec:
         app: rocketmq-namesrv
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: namesrv
           image: docker.io/apache/rocketmq:5.3.1
@@ -85,7 +85,7 @@ spec:
         app: rocketmq-broker
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: broker
           image: docker.io/apache/rocketmq:5.3.1

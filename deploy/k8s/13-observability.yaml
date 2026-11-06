@@ -35,11 +35,11 @@ data:
         static_configs:
           # 节点 IP=占位 token，apply 时由 50-platform.yml 按 inventory 派生替换（REQ-OSS-PUBSCRUB-1）
           - targets: ["${DW_NODE1}:9100"]
-            labels: {node: dw-k8s-1}
+            labels: {node: k8s-node-1}
           - targets: ["${DW_NODE2}:9100"]
-            labels: {node: dw-k8s-2}
+            labels: {node: k8s-node-2}
           - targets: ["${DW_NODE3}:9100"]
-            labels: {node: dw-k8s-3}
+            labels: {node: k8s-node-3}
 
       # 后端从 K8s API 生成的 Pod / Deployment 状态指标（替代 kube-state-metrics）
       - job_name: dataworks-k8s
@@ -59,11 +59,11 @@ data:
           insecure_skip_verify: true
         static_configs:
           - targets: ["${DW_NODE1}:10250"]
-            labels: {node: dw-k8s-1}
+            labels: {node: k8s-node-1}
           - targets: ["${DW_NODE2}:10250"]
-            labels: {node: dw-k8s-2}
+            labels: {node: k8s-node-2}
           - targets: ["${DW_NODE3}:10250"]
-            labels: {node: dw-k8s-3}
+            labels: {node: k8s-node-3}
 
       # API Server 指标（请求量、延迟、错误）
       - job_name: apiserver

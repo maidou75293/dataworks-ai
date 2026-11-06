@@ -20,7 +20,7 @@ spec:
         app: pulsar
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: pulsar
           image: docker.io/apachepulsar/pulsar:3.3.1

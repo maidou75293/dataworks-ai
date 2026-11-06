@@ -4,7 +4,7 @@
 #   ansible-playbook site.yml --check
 #   ansible-playbook site.yml
 #   ansible-playbook site.yml --tags k3s
-#   ansible-playbook site.yml --limit dw-k8s-3
+#   ansible-playbook site.yml --limit k8s-node-3
 #
 # 四个 play：集群节点（远程） → 平台（控制机本地） → 主机服务 agent-service（首节点，须在平台密钥就绪后） → 验收。
 # 验收排在 agent-service 之后，否则首装时 8097 还没起来就被 verify 拦下。

@@ -106,10 +106,10 @@ import { clearPendingPick, getPendingPick, setCreateDraft, takeCreateDraft } fro
  *    视同已手输；openCreate 重置 titleTouched。（跨页草稿主链 ?create=1/takeCreateDraft/
  *    getPendingPick 已由 13-C 落地，本条只补默认名残段。）
  *
- * REQ-NIGHT-LEARN-1（夜间岗位学习，项目负责人信 ）：本页行操作加「夜间学习」弹窗
+ * REQ-NIGHT-LEARN-1（学习，项目负责人信 ③/24④c）：本页行操作加「夜间学习」弹窗
  *  = 岗位配置入口（1 个标注项目=1 个岗位）。PRD 原文写「标注项目详情页」，但详情页画布是
  *  vendor LabelStudio 内嵌页（?settings=1，见上方 ⑧ 注），我方无法往 vendor 页注入控件，
- *  故落列表行操作弹窗、字段与语义等同（偏差已在 docs/夜间岗位学习-20261104.md §三 如实记账）。
+ *  故落列表行操作弹窗、字段与语义等同（偏差已在 docs/学习-20261104.md §三 如实记账）。
  *  入口按权限点 mos:flywheel 裁剪（后端类级 @RequireAtom 同源，未新立点位）：没有该点位的人
  *  看不到钮，而不是看到钮再吃 403。存的是「夜里怎么学」——窗、岗位准入分、特征 SQL 与列映射，
  *  跑圈由 cc-ctrld 夜环 postlearn 负责，页面不代跑。

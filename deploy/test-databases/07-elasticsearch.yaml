@@ -33,7 +33,7 @@ spec:
         app: elasticsearch
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-1
+        kubernetes.io/hostname: k8s-node-1
       containers:
         - name: elasticsearch
           image: docker.io/library/elasticsearch:7.17.22

@@ -40,7 +40,7 @@ spec:
         app: clickhouse
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       initContainers:
         - name: init
           image: docker.io/rancher/mirrored-library-busybox:1.37.0

@@ -25,7 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 系统配置页「对话智能体」区块（REQ-AGENT-CFGPANEL-1，）。
+ * 系统配置页「对话智能体」区块（REQ-AGENT-CFGPANEL-1，项目负责人 ①）。
  *
  * <p>同源=读写 agent-service 进程里的生效值，Java 侧不另存一份拷贝：端点/密钥/
  * 模型名只存在于 agent-service 的环境与 .env（②BUG-AGENT-KEY-FIX-1 实锤过配置

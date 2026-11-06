@@ -1,0 +1,21 @@
+# 「会话豁免路径上的端点」人工复核清单（D49）。
+# 由 scripts/ci/check-permissions.py 读取；一行一个 `路径#方法名`，后面写理由。
+#
+# 为什么单独列这一类：AuthInterceptor.preHandle 在**注解判定之前**就对
+# /api/ds/、/api/udf/jars/、/api/quality/gate 这类路径 `return true`（给集群内部凭证与
+# 外部调用方用）。所以这些方法上挂 @RequireAtom 一律不生效——检查脚本会把它报成「装饰性注解」。
+# 新增条目必须能回答：这个端点在自己的方法体里凭什么放行调用方？
+#
+# 格式：<backend 相对路径>#<方法名>   <理由>
+# 说明：/api/internal/** 不写在这里——那类路径由拦截器统一校验 X-Internal-Token，属于「已收口」，
+#       登录自助接口（/api/auth/login、/me、/password、/switch-tenant、/api/auth/sso/、/api/health、
+#       /actuator）走脚本内置白名单，也不写在这里。
+
+# ---------- 数据服务对外出口：调用方是外部系统，没有平台会话 ----------
+backend/src/main/java/com/lab/dataworks/service/DataServiceController.java#call  接口内校验发布版本绑定的 API Token，并按 SERVICE_CALL 写审计（含失败原因），无 token 直接拒
+
+# ---------- UDF jar 由 Doris BE / Flink TM 直接下载，没有会话 ----------
+backend/src/main/java/com/lab/dataworks/udf/UdfController.java#jar  接口内校验一次性下载 token（发布时签发），token 与函数版本绑定；这条豁免写在 AuthInterceptor 注释里
+
+# ---------- 质量闸门：调度期由 Flow 用内部凭证回调 ----------
+backend/src/main/java/com/lab/dataworks/quality/QualityController.java#gate  方法内 authorizeGate() 自己收口：内部凭证（X-Internal-Token）或带 quality:run 的登录会话；会话调用还按用户租户过滤规则，缺权限 403、无凭证 401（回归用例 QualityGateAuthTest 钉住这四条分支）。**不要再往这个方法上加 @RequireAtom**：路径在拦截器豁免分支里，注解不会被读到，加了只会得到「装饰性注解」的报错

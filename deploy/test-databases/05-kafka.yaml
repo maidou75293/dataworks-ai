@@ -33,7 +33,7 @@ spec:
         app: kafka
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: kafka
           image: docker.io/apache/kafka:3.8.0

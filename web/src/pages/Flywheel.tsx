@@ -22,7 +22,8 @@ import { listDatasets } from '../api/mos'
 const { Text } = Typography
 
 /**
- * 数据飞轮总览（REQ-FW-4；信息架构整改 REQ-FLYWHEEL-PAGE-1， * 开圈入口改版 REQ-FLYWHEEL-ENTRY-1，）。
+ * 数据飞轮总览（REQ-FW-4；信息架构整改 REQ-FLYWHEEL-PAGE-1，项目负责人 ② / PRD B 段；
+ * 开圈入口改版 REQ-FLYWHEEL-ENTRY-1，项目负责人  第 3 条）。
  *
  * 页级信息架构 = 三步向导：**开一圈 → 过闸 → 看结果**（GuideBand 常驻列表上方，空态同样顶置）；
  * 开一圈（向导第①步）内部也是三步：**可视化选表 → 预览入环数据 → 确认**——业务用户全程不写 SQL，

@@ -89,7 +89,7 @@ docker.io 转发到外部源，会 403。
 
 不想让 install 灌镜像：`DW_SKIP_IMAGES=1 bash deploy.sh install`，然后手动 `registry-load`。
 
-脚本会自动把 `deploy/` 同步到控制机 `dw-ops` 并在那执行 Ansible。
+脚本会自动把 `deploy/` 同步到控制机 `ops-controller` 并在那执行 Ansible。
 Windows 不能原生跑 Ansible，所以控制机是必须的——**但你不需要登录它**。
 
 仓内不存真实网络拓扑/宿主锚点（REQ-OSS-PUBSCRUB-1），开工前先补两个本地文件

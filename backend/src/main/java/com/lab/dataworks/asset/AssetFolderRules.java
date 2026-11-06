@@ -121,6 +121,7 @@ final class AssetFolderRules {
     }
 
     /**
+     * S11 两层口径（评审确认 2026-10-26，见 {@code state/}）——
      * **内容层**判定：预签名下载、文件本体、详情敏感字段（uri / sha256 / url）。
      *
      * <ul>

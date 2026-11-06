@@ -151,7 +151,7 @@ export async function fwPickerSample(
   }
 }
 
-// ---------- 夜间岗位学习（REQ-NIGHT-LEARN-1；权限沿用 mos:flywheel，后端类级收口，未新立点位） ----------
+// ---------- 学习（REQ-NIGHT-LEARN-1；权限沿用 mos:flywheel，后端类级收口，未新立点位） ----------
 //
 // 岗位=1 个标注项目（labelProjectId 是 MOS 标注项目号，不是平台项目号）。
 // 端点串与 FlywheelOrchestratorController 逐字对齐，判据 N2 两边字面比钉（拼错=假绿）。

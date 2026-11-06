@@ -39,6 +39,7 @@ import java.util.regex.Pattern;
  *
  * <p>刻意不做的事：导出归档、parquet 转换、归档回查（用户 07:54 明确砍掉，见 V108 注释）。
  * 卡面第 3 条的「归档（移到冷/归档库）」因此仍不落地 —— 那是与既有决定冲突的需求，
+ * 需要单独评审确认，不在这里偷偷实现。</p>
  *
  * <p>安全阀：只认 {@code pYYYYMMDD} / {@code dt=YYYY-MM-dd} 这类可解析的时间分区，
  * 认不出的一律跳过并记 SKIP；单表单次最多动 {@value #MAX_DROP_PER_RUN} 个分区。</p>

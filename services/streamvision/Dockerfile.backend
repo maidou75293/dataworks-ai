@@ -1,6 +1,6 @@
 # StreamVision backend image
 # Build context: ~/stream-agent/backend (WSL)
-#   docker build -f services/streamvision/Dockerfile.backend \
+#   docker build -f /mnt/c/Users/Administrator/code/dataworks-ai/services/streamvision/Dockerfile.backend \
 #     -t <registry>:30500/streamvision/backend:1.0.0 ~/stream-agent/backend
 FROM python:3.12-slim
 

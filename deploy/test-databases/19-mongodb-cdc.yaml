@@ -20,7 +20,7 @@ spec:
         app: mongo-cdc
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: mongo
           image: docker.io/library/mongo:7

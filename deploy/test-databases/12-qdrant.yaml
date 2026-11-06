@@ -38,7 +38,7 @@ spec:
         app: qdrant
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       containers:
         - name: qdrant
           image: docker.io/qdrant/qdrant:v1.9.0

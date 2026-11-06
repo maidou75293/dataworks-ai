@@ -1,0 +1,49 @@
+# 明确不需要界面的端点（每行一个路径前缀；注释单独成行，不能跟在路径后面）
+/api/health
+/api/auth/sso
+/api/udf/jars
+/api/ops/prefect
+/api/integration/tasks/runs/prune
+/api/rbac/permissions
+/api/lake/template
+/api/datasources/gravitino
+# D53 偏差③（卡内已评审确认）：备份表管理只做 API，不加界面
+/api/changes/backups
+# D52：到期提醒手动触发是运维口子（平台级 system:manage + 回归脚本用），界面入口是「我的申请」续期（已接线）
+/api/access/expiry-reminders
+# WIRING-TC13-1（2026-10-27 撤临时登记）：删库端点界面入口已接（Tables.tsx 库列表「删除库」），
+# 守卫恢复原判据；若界面入口再被移除，本端点会重新变红。
+# TC7-G5（卡内评审确认，2026-10-27）：审批链策略 CRUD 只做后端 API，前端策略配置页明确「未做
+# ——web 属审批流组，如需 UI 另开小卡」；配置与回归由 scripts/e2e/approval-policy-test.py 使用。
+/api/access/approval-policies
+# TC7-G5 升级扫描手动触发：与 D52 expiry-reminders 同类运维口子（定时 Job 常态自动跑，
+# 该 POST 仅供回归/排障），界面入口是审批页超时升级留痕（随 UI 小卡另接）。
+/api/access/approval-escalations
+# TC7-G3（PM 定向 wf-m1 落码，2026-10-27）：审计日志导出先只做后端流式端点，
+# Security.tsx 导出按钮明确「UI 另开小卡」（同 TC7-G5 口径）；HTTP 面回归由
+# scripts/e2e/tc7-g3-audit-export-test.py（t5 守卫）+ 单测 SecurityControllerExportTest 钉住。
+/api/security/audit/export
+# TC7-G4（wf-m3 落码，2026-10-27）：按项目/租户用量计量——卡面 scope 钉死「只定义并采集，不做计费与账单」，
+# 展示归集页面属「最后才是展示与分摊」段（未立项）；契约与回归由
+# scripts/e2e/tc7-g4-usage-metering-test.py（t5 守卫，17P/0F 面）+ 单测钉住（同 TC7-G3/G5 口径）。
+/api/usage/summary
+# REQ-FW-2（wf-m9，卡面文件域=backend mosbridge+迁移+单测，无界面项；DONE 卡未立 UI 小卡）：
+# 飞轮②产物回环——MosFlywheelScheduler @Scheduled 自动轮询消费，回归由
+# scripts/e2e/mos-flywheel-test.py L1-L5 curl 证据 + 单测 MosFlywheelServiceTest 钉住；
+# 权限点 mos:flywheel（V170）收口调用面（同 TC7-G3/G5 口径）。
+/api/mosbridge/flywheel
+# REQ-FW-5（wf-m9，卡面目标=搬运器/引用契约/台账，文件域 backend+scripts+docs，无界面项）：
+# /api/mosbridge/media/*（plan/transfer/pushed/ledger）由 FW-1 时序钩子 ensureMediaForPush
+# 内部触发 + scripts/e2e/fw5-media-e2e.py 四步 e2e 钉住（单测 11/11）。
+/api/mosbridge/media
+# REQ-FW-1（已 DONE，5a09477）：推送器端点卡面边界「不做自动触发（编排归 FW-4）」、
+# 验收=service 直调证据（卡面上线注记），界面入口未立卡——登记待 UI 小卡，接界面后撤销（同 WIRING-TC13-1 反向口径）。
+/api/annotation-push
+# REQ-FW-4（wf-m6，2026-10-28）：badcase 信号回写口=V180 注释承诺的「部署服务/助手回写」接点，
+# 调用方是服务侧（查询网关/助手）而非界面——由 scripts/e2e/flywheel-loop.sh STEP5 钉住；
+# /api/flywheel 其余面（runs/gate/tick/settings）已接「数据飞轮」页（web/src/pages/Flywheel.tsx）。
+/api/flywheel/badcase-signal
+# REQ-SYS-RIGHTSIZE-1（2026-11-03）：右调算法试算器与页面「内存右调建议」页签共用同一 suggest 函数，
+# 界面只展示服务端算好的清单；该 POST 喂任意 P95/进程声明，仅供回归判据 scripts/e2e/rightsizing-test.py
+# A 段点名测算法（倒挂必红、无数据不产建议），同 D52 运维口子口径。
+/api/system/rightsizing/evaluate

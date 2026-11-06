@@ -5,15 +5,15 @@
 # 供元数据通道使用。业务账号的查询/Spark/MCP 使用点全部不动。
 #
 # 为什么必须是 hostNetwork Job：
-#   Doris root 只允许 127.0.0.1 免密，只有 FE 所在节点（dw-k8s-1）的
+#   Doris root 只允许 127.0.0.1 免密，只有 FE 所在节点（k8s-node-1）的
 #   hostNetwork Pod 才能以 root 执行 CREATE USER / GRANT。Job 自带重试、
 #   日志和 TTL，失败后可以回看，比手工 exec 可审计。
 #
 # 账号 host 为什么是 '%'（2026-11-03 BUG-META-GRAV-CRED-1 改，原为 '10.42.%'）：
 #   原假设「Pod 连 Doris 时 client IP 形如 10.42.x」在现网不成立：doris-fe 以
-#   hostNetwork 跑在 dw-k8s-1（Pod IP=首节点 IP），其它节点 Pod 经
+#   hostNetwork 跑在 k8s-node-1（Pod IP=首节点 IP），其它节点 Pod 经
 #   flannel 访问时源被 SNAT 成本节点 IP（实测报错源=第二节点 IP，
-#   即 dw-k8s-2 节点 IP）。'10.42.%' 会拒绝 Gravitino 与后端的元数据连接——
+#   即 k8s-node-2 节点 IP）。'10.42.%' 会拒绝 Gravitino 与后端的元数据连接——
 #   这是 A13 元数据面持续降级的根因之一（另一半是 Gravitino catalog 持有
 #   轮换前旧口令）。'%' 与既有账号 root/admin/dataworks 同一惯例；该账号的
 #   真实安全边界是只授 SELECT_PRIV（REVOKE ALL 先行），不是源地址匹配。
@@ -71,7 +71,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-1
+        kubernetes.io/hostname: k8s-node-1
       automountServiceAccountToken: false
       containers:
         - name: setup

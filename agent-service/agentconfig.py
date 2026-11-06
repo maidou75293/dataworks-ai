@@ -1,6 +1,6 @@
 """对话智能体的模型侧配置（端点/密钥/模型名）——同源单一入口。
 
-为什么存在（REQ-AGENT-CFGPANEL-1，项目负责人信箱 seq=24①）：真生效的模型路由只在
+为什么存在（REQ-AGENT-CFGPANEL-1，）：真生效的模型路由只在
 agent-service 的进程环境 / 节点 .env 里，而旧页面弹层改的是 Java 侧 DB 里的
 身份模式——配置分裂，坏了没人知道（BUG-AGENT-KEY-FIX-1 实锤：key 为空对话
 final=failed，/api/health 却依旧 ok=true，"服务活着"骗过了所有旧脚本）。

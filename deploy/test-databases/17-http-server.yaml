@@ -107,7 +107,7 @@ spec:
         app: http-echo
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       containers:
         - name: server
           image: ${DW_REGISTRY}/base/python:3.12-slim

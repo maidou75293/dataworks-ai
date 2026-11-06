@@ -57,7 +57,7 @@ spec:
         app: sftp
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: sftp
           image: docker.io/atmoz/sftp:alpine

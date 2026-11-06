@@ -1,3 +1,107 @@
 # 生成的部署产物（ConfigMap 等）
 build/
 
+# 账号文件：绝对不要提交（新部署方案的密钥文件路径确定后在这里补）
+*secrets*.yml
+*secrets*.yaml
+
+# ---------- 大体积二进制与镜像 ----------
+deploy/images/
+deploy/artifacts/
+*.tar
+*.tar.gz
+*.tgz
+*.img
+*.qcow2
+
+# ---------- 密钥与凭据 ----------
+deploy/secrets/
+deploy/keys/
+*.pem
+*.key
+*.p12
+*.jks
+id_rsa*
+id_ed25519*
+.env
+.env.local
+!.env.example
+
+# ---------- 构建产物 ----------
+node_modules/
+dist/
+target/
+*.class
+*.jar
+!deploy/**/lib/*.jar
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# ---------- 运行时与日志 ----------
+logs/
+*.log
+.test-state.json
+.work/
+
+# ---------- 测试报告产物 ----------
+test-report/run/
+test-report/*.zip
+
+# ---------- 编辑器/系统 ----------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 前端构建产物（由 scripts/ci/build-backend-image.sh 生成，不入库）
+backend/src/main/resources/static/
+
+# 临时证据/中间产物（曾把口令带进 git，S15）
+.tmp/
+#  机制目录规范（MECH-STD1，2026-10-30）：代码/文档/名册进 git，运行时账目数据不进。
+# 历史坑：原整目录忽略 `//` 使新代码文件被静默吞掉（旧文件系当年 ），改白名单。
+!//README.md
+!//cards_dag.py
+!//registry.json
+# 发布包根级件（REQ-OSS-ENGINE-1）：oss_cli.RELEASE_FILES 含此二件，曾被上方 //* 静默吞
+!//pyproject.toml
+!//LICENSE
+# README 动画资产（REQ-OSS-README-UX-1）：demo.gif 头牌+项目负责人 2026-11-04 23:5x 明令保留的第一版
+# demo-docqa.gif。历史坑：demo.gif 当年  未立白名单，保留版入库即被 //* 静默吞
+# （T2d/T7 红前自检发现），此处补门并同点 CHANGELOG/CONTRIBUTING/SECURITY/.gitattributes 四件——
+# 该四件系当年  的存量件，改名或重加时务必补白名单行，别再走 -f。
+!//demo*.gif
+# 首屏架构图（REQ-OSS-README-UX-1 R8，项目负责人 2026-11-05「面板架构图更新进 README 置顶+傻瓜式」）：
+# 发布资产入白名单行，同 demo*.gif 教训——不立门就被 //* 静默吞=T7/T9a 。
+!//architecture.svg
+# 现网部署配置（REQ-OSS-ENGINE-1 二轮收口）：定制值（平台入口等）只落此件——入私仓防
+# BUG-RUNNER-GONE-1 型仓外单点失踪，**永不入发布包**（oss_cli 白名单不含、oss-release-check B 禁入包点名）。
+!//config.toml
+!//ccards/
+!//ops/
+!//tools/
+# 外部门面 demo(LangGraph 等)：账本纪律外，可整删
+!//facade/
+# 看板服务本体（MECH-BRD1 自 ~/./tmp/atf 迁入：源码必须放工程内=项目 CLAUDE.md 第一条）
+!//board/
+# board 运行时产物不进 git（代码进、数据不进，同  口径）
+//board/*.log
+//board/token-compare.md
+//board/__pycache__/
+!//tests/
+!//docs/
+# 起会话核正本（BUG-RUNNER-GONE-1，2026-11-04：仓外 ~/./tmp 副本随切流归档失踪=三路拉起空转6h）
+!//bin/
+
+# /15 无主脏件白名单（项目负责人 2026-11-03：测试输出/模型资产类垃圾直接进 ignore 规则）
+# 测试输出：dl1 等 e2e 落盘件（chain1.out 等已跟踪证据不受影响，gitignore 只拦未跟踪新件）
+scripts/e2e/**/*.out
+scripts/e2e/*.out
+# 模型资产：YOLO onnx 按 assets/vision/README.md 流程再生，不进账（10MB 级二进制）
+mos/platform/backend/assets/vision/*.onnx
+*.pt
+!//.github/

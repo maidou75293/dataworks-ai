@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 变更单 v1 纯规则：拆句、动词、备份计划、备份表名、审批前置判定
+ * （inbox/007 第六、七、十节）。
  */
 class ChangeRulesTest {
 

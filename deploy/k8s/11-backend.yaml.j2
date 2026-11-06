@@ -135,7 +135,7 @@ spec:
               value: "8080"
             # 迁移顺序豁免（v535 事故，2026-10-27）：wm3 的 V115 先进了库，wm2 的 V114
             # 当时还没提交，补上后成为「115 已应用、114 后应用」的乱序历史；不加这项
-            # Flyway 拒绝启动，v535 首次上线即 CrashLoopBackOff。
+            # Flyway 拒绝启动，v535 首次上线即 CrashLoopBackOff（事实见 releases/v535.md）。
             # 现网当时是用 kubectl set env 救活的，仓库清单里没有 → 每次重新渲染都会漂回崩溃，
             # 故固化在此。全新空库按序应用不受影响。
             # 长期解法：泳道合并完再统一发版，别让跨泳道迁移抢跑。
@@ -255,8 +255,8 @@ spec:
                   key: AGENT_SERVICE_TOKEN
             # REQ-BUG-MOSBRIDGE-1（2026-10-28）桥接（platform.mos.*，application.yml:144-151）。
             # BUG-MOS-MIGRATE-1（2026-11-04）改指集群内：旧形态「portproxy 宿主网关:8090→
-            # WSL systemd modelonestation」随 WSL 卸载连根消失，模型板块整块 502（业主信箱
-            # seq=42）。10-28「不为桥接单独拉起 mos」的裁决前提是宿主常驻位可靠——该前提
+            # WSL systemd modelonestation」随 WSL 卸载连根消失，模型板块整块 502（项目负责人
+            # ）。10-28「不为桥接单独拉起 mos」的裁决前提是宿主常驻位可靠——该前提
             # 已死，现落点定版 k8s：Service modelonestation-app.dw-dev:8090（清单
             # mos/platform/k8s/app.yaml，镜像 <私有仓库>/library/modelonestation-backend，
             # 构建发布 scripts/ci/build-mos-image.sh，自愈常驻不再「住别人家」）。

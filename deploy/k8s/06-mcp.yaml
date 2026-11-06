@@ -25,7 +25,7 @@ spec:
                 matchExpressions:
                   - key: kubernetes.io/hostname
                     operator: NotIn
-                    values: ["dw-k8s-3"]
+                    values: ["k8s-node-3"]
       containers:
         - name: mcp
           image: ${DW_REGISTRY}/library/dw-runtime:dev

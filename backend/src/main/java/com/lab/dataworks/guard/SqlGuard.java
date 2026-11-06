@@ -9,6 +9,7 @@ import java.util.Set;
 /**
  * v1 破坏性 SQL 判定（关键词级，不引 Druid / JSqlParser）。
  *
+ * <p>规则见 inbox/007 与 008：去掉注释与字符串字面量，按顶层分号拆句，
  * 取语句动词；命中文档中的破坏性动词（或含 OVERWRITE）即需要审批，
  * 若该句涉及的表名全部是 tmp_ / temp_ / tmp 前缀则直接放行。</p>
  *

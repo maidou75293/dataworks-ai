@@ -1,0 +1,7 @@
+# 已知未接界面、正在修复的端点（D45/D46/D47/D48/冷热分层）
+/api/query-limits
+/api/quality/gate
+/api/ops/lifecycle/logs
+/api/warehouse-connections
+/api/storage/cold-hot
+/api/alert-deliveries

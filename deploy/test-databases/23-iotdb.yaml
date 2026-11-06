@@ -20,7 +20,7 @@ spec:
         app: iotdb
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       containers:
         - name: iotdb
           image: docker.io/apache/iotdb:1.3.3-standalone

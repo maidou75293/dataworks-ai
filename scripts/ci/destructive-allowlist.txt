@@ -1,0 +1,5 @@
+# DELETE / 批量清理接口的人工复核清单（scripts/ci/check-destructive-tenant.py 读取）。
+# 一行一个 `<backend 相对路径>#<方法名>`，后面写理由。
+
+# udf.deleteFunction 内部先 ownedFunction(id)（按 tenant_id 校验）再删
+backend/src/main/java/com/lab/dataworks/udf/UdfController.java#deleteFunction  服务层先过 ownedFunction()

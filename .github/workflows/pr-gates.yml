@@ -7,6 +7,7 @@
 #   ③ static-checks   scripts/ci/run-static-checks.sh（13 个无状态检查器，名单与排除理由见脚本头注）
 #   ④ commit-msg      scripts/ci/check-commit-msg.sh（本地 hook 原样搬 CI，判定逻辑单源）
 #   ⑤ dependabot      .github/dependabot.yml（配置件非 job：maven/npm/github-actions 三条线）
+#   （⑤ selftest.yml= 机制闸，两处公共 runner 必挂点已随 REQ-CCTEAM-OSS-1 修复：
 #     powershell.exe 加 HOST_OS 门 + 判空解析兼容新尾标 skips=）
 #
 # 基线红如实入账，不迁就：backend 全量 1434 跑有 6 个预存在红（5 条=SEC-CLEAN 交卷定案三因、根因已回主控转派 CC-A；

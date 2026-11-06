@@ -3,7 +3,7 @@
 # 与 K8s 平台解耦；平台只通过 WebHDFS 地址连接。
 #
 #   ansible-playbook hdfs.yml
-#   ansible-playbook hdfs.yml --limit dw-k8s-2
+#   ansible-playbook hdfs.yml --limit k8s-node-2
 #
 # 幂等：已解压/已格式化/已启动都不会重做。
 - name: HDFS 原生部署

@@ -186,7 +186,7 @@ public class FlywheelOrchestratorController {
         return out;
     }
 
-    // ---------- 夜间岗位学习（REQ-NIGHT-LEARN-1） ----------
+    // ---------- 学习（REQ-NIGHT-LEARN-1） ----------
     //
     // 权限沿用类级 mos:flywheel（卡面「权限复用」），不另立点位；岗位键=标注项目号，
     // 平台项目号走 guard.requireProject（by-id 租户收口，同 /runs 口径）。

@@ -18,7 +18,7 @@ spec:
       # 与 prefect-pool-worker 固定在同一节点：bridge 挂载 prefect-flows 卷后，
       # 可以直接判断「worker 所在节点是否已经看到刚发布的 Flow 文件」。
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-1
+        kubernetes.io/hostname: k8s-node-1
       containers:
         - name: bridge
           image: ${DW_REGISTRY}/library/prefect:3-dev

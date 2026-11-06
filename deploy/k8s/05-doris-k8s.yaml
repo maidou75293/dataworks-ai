@@ -23,7 +23,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-1
+        kubernetes.io/hostname: k8s-node-1
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000

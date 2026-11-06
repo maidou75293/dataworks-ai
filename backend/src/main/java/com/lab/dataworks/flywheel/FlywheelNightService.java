@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * REQ-NIGHT-LEARN-1 夜间岗位学习的数据面：岗位配置（=1 个标注项目）+ 一夜一岗晨报台账 + badcase TOP 聚合。
+ * REQ-NIGHT-LEARN-1 学习的数据面：岗位配置（=1 个标注项目）+ 一夜一岗晨报台账 + badcase TOP 聚合。
  *
  * <p>三条纪律：</p>
  * <ol>

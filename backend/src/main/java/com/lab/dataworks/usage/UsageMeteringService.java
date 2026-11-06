@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * TC7-G4：按项目/租户的用量计量（只定义口径并采集，不做计费与账单）。
  *
  * <p>验收契约 = docs/测试-TC7-G4.md §五，守卫 = scripts/e2e/tc7-g4-usage-metering-test.py。
+ * 五个维度的素材与口径（§四评审确认表）：</p>
  * <ul>
  *   <li>{@code queryCount / resultRows}：新采集表 {@code platform.usage_query_event}，
  *       采集点在 {@code POST /api/query/doris} 成功路径（V121）；</li>

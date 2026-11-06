@@ -749,8 +749,8 @@ public class DataSourceController {
      * D64：连接失败原因**分类**，驱动原文只进日志、不进响应。
      *
      * <p>缺陷现场（TC-5 用例 T5-DS-03 / T5-DS-06，v539 live）：口令错误时接口 200 返回
-     * {@code {"ok":false,"error":"Access denied for user 'bug_a_user@10.0.0.13'
-     * (using password: YES)"}}。其中 {@code 10.0.0.13} 是<b>后端 Pod 在集群内的源地址</b>——
+     * {@code {"ok":false,"error":"Access denied for user 'bug_a_user@192.0.2.13'
+     * (using password: YES)"}}。其中 {@code 192.0.2.13} 是<b>后端 Pod 在集群内的源地址</b>——
      * 调用方从没提供过、也不该在页面上看到；{@code (using password: YES)} 还额外泄露
      * 「服务端确实收到了密码」这一认证细节。{@code last_test_message} 会把这条存进库并在列表回显。</p>
      *

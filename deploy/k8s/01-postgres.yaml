@@ -56,7 +56,7 @@ spec:
               containerPort: 5432
           resources:
             requests:
-              # 实测 CPU ~6m：500m 的申请会让节点（PV 绑定 dw-k8s-3）调度不上，
+              # 实测 CPU ~6m：500m 的申请会让节点（PV 绑定 k8s-node-3）调度不上，
               # 平台元数据库 Pending 会直接导致全站 502
               cpu: 50m
               memory: 256Mi

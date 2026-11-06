@@ -34,7 +34,7 @@ spec:
         app: registry
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-1
+        kubernetes.io/hostname: k8s-node-1
       containers:
         - name: registry
           image: docker.io/library/registry:2

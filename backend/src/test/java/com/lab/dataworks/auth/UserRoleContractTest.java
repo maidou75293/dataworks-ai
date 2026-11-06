@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
  */
 class UserRoleContractTest {
 
-    private static final String PASSWORD = "MockP@ss!";
+    private static final String PASSWORD = "MockP@ss1";
 
     /** roleRows＝该租户内置角色查询的命中行数。 */
     private JdbcTemplate jdbc;

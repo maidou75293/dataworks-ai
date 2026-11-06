@@ -216,7 +216,7 @@ public class K8sOpsService {
         ticket.put("commands", List.of(
                 "bash scripts/ops/seatunnel-artifacts-restore.sh"));
         ticket.put("manual", List.of(
-                "应急手工等价链（控制机 dw-ops）：ansible-playbook -i inventory/lab.yml artifacts.yml",
+                "应急手工等价链（控制机 ops-controller）：ansible-playbook -i inventory/lab.yml artifacts.yml",
                 "目标目录：/tmp/seatunnel-2.3.13、/tmp/seatunnel-connectors、/tmp/seatunnel-connectors/jdbc-lib"));
         ticket.put("note", "系统清理 /tmp 会删掉 SeaTunnel 的 hostPath 制品（历史事故见 docs/运维-k3s扩容与SeaTunnel恢复-20261020.md）；"
                 + "后端不直接执行远程命令，本操作单+仓内 ops 脚本双轨执行，全程留审计。");

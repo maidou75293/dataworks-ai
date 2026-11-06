@@ -37,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 接口曾经返回 {@code 200 {"ok":true}} 但 UPDATE 的 set 列表不含 code——改动被静默丢弃
  * （违反 acceptance-rules.md 第 4 条「不许静默」）。
  *
+ * <p>口径（见 tasks/BUG-TC1-1.md 备案）：code 是 {@code /api/quality/gate} 与已发布 Flow
  * 引用规则的外部标识，改成<b>禁止修改</b>——请求里的 code 与库中不一致直接 400，
  * 一致则照常更新其余字段。</p>
  */

@@ -1,6 +1,6 @@
 """流程 SOP playbook 中间层：repo 内 JSON 版本化 + 模块路由渲染 + 防腐校验。
 
-定位（项目负责人信 seq=24④ / PRD《对话操作 dataworks 整改》④）：
+定位（项目负责人信  / PRD《对话操作 dataworks 整改》④）：
 - 工具级手册（manual.py）讲"单个工具怎么用"，本层讲"一条业务链怎么走"；
 - 16 条现役 E2E 验收用例作流程骨架，每链一份 playbook 落在
   `agent-service/playbooks/*.json`，字段=目标 goal / 步骤序 steps（每步带工具）/

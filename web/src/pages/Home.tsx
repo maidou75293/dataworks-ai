@@ -595,17 +595,17 @@ export default function Home() {
                 </div>
                 <div className="topo-nodes">
                   <div className="topo-node">
-                    <b>dw-k8s-1</b>
+                    <b>k8s-node-1</b>
                     <span>6 vCPU / 12GB</span>
                     <span>control-plane + etcd</span>
                   </div>
                   <div className="topo-node">
-                    <b>dw-k8s-2</b>
+                    <b>k8s-node-2</b>
                     <span>6 vCPU / 10GB</span>
                     <span>control-plane + etcd</span>
                   </div>
                   <div className="topo-node">
-                    <b>dw-k8s-3</b>
+                    <b>k8s-node-3</b>
                     <span>6 vCPU / 10GB</span>
                     <span>control-plane + etcd</span>
                   </div>

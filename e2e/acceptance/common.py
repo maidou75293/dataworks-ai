@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """dataworks 数据中台验收脚本公共库。
 
+为什么经 curl.exe：本机 WSL 到 10.10 网段不通（路由/NAT 限制），
 Windows 侧可达，因此默认调用 /mnt/c/Windows/System32/curl.exe。
 非 WSL 环境（CI / 开发机）自动回退 urllib，接口保持完全一致。
 

@@ -33,7 +33,7 @@ spec:
         app: cassandra
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: cassandra
           image: docker.io/library/cassandra:4.1

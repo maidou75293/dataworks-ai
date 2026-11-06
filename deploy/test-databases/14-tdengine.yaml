@@ -38,7 +38,7 @@ spec:
         app: tdengine
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-2
+        kubernetes.io/hostname: k8s-node-2
       containers:
         - name: tdengine
           image: docker.io/tdengine/tdengine:3.3.0.0

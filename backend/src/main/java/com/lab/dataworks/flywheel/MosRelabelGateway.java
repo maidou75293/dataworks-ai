@@ -9,6 +9,7 @@ package com.lab.dataworks.flywheel;
  * （{@code mos/platform/backend/api/datasets.py:1040}，按归一化问题去重），
  * 终态=<b>数据集条目</b>，<b>不会</b>自动进标注工作台队列（旧注释「进原有队列」失实：
  * 数据集→LS 任务无自动通路，队列可见现网唯一口=mos 手动
+ * {@code POST /api/label-studio/projects/{pid}/import}，终态待评审确认见 BUG-CHAIN-2）
  * ——REST 同步、不引 MQ、不建第二套队列。
  * 注：旧注释「自动认 messages 字段」系误记——messages 轨迹同样要求 q/a 双非空
  * （{@code _qa_of_obj}，datasets.py:966），只带 user 轮的 jsonl 必被 400 拒；

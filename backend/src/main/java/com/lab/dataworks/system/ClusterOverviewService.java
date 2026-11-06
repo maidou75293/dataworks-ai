@@ -100,7 +100,7 @@ public class ClusterOverviewService {
         collect(beStats, "doris_be_tablet_version_num_distribution_count", 2);
         collect(beStats, "up{job=\"doris-be\"}", 3);
 
-        // 每个 K8s 节点一行；Doris 的 FE 在 dw-k8s-1 上
+        // 每个 K8s 节点一行；Doris 的 FE 在 k8s-node-1 上
         List<ClusterNode> nodes = new ArrayList<>();
         for (Map.Entry<String, String> e : nodeIp.entrySet()) {
             String nodeName = e.getKey();

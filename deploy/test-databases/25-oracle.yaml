@@ -20,7 +20,7 @@ spec:
         app: oracle
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       containers:
         - name: oracle
           image: docker.io/gvenzl/oracle-free:23-slim

@@ -1,0 +1,63 @@
+# 「只按主键访问、SQL 里没有 tenant 条件」的人工复核清单。
+# 由 scripts/ci/check-tenant-sql.py 读取；一行一个 `路径#方法名`，后面可写理由。
+# 新增条目必须能回答：这个对象在写/读之前，凭什么确定属于当前租户？
+#
+# 格式：<backend 相对路径>#<方法名>   <理由>
+
+# ---------- 先经 find()/owned*/require() 做过租户校验，主键再查一次是为了拿行 ----------
+backend/src/main/java/com/lab/dataworks/access/AccessController.java#decide  requester/owner 可见性已在 requestRow() 校验
+backend/src/main/java/com/lab/dataworks/ops/OpsController.java#instance  先过 ownedInstance()
+backend/src/main/java/com/lab/dataworks/ops/OpsController.java#log  先过 ownedInstance()
+backend/src/main/java/com/lab/dataworks/ops/OpsController.java#rerun  先过 ownedInstance()
+backend/src/main/java/com/lab/dataworks/security/SecurityController.java#revoke  DELETE 前用同一条租户过滤 SELECT 取了 username
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#update  先过 require(id)
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#validateDependency  调用方已过 require(id)
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#datasource  project_id 由已校验的任务带出
+backend/src/main/java/com/lab/dataworks/quality/QualityController.java#resolveDatasourceId  已带 project_id = ?
+backend/src/main/java/com/lab/dataworks/quality/QualityController.java#legacyDatasource  调用方已过 owned()/resolveDatasourceId()
+backend/src/main/java/com/lab/dataworks/service/BiController.java#checkChartDatasources  已带 project_id = ?
+backend/src/main/java/com/lab/dataworks/service/BiController.java#datasource  先过 checkChartDatasources()
+backend/src/main/java/com/lab/dataworks/service/DataServiceController.java#checkDatasource  已带 project_id = ?
+backend/src/main/java/com/lab/dataworks/service/DataServiceController.java#findDatasource  先过 checkDatasource()
+backend/src/main/java/com/lab/dataworks/workflow/WorkflowController.java#publish  版本号已过 getWorkflow()/version()
+backend/src/main/java/com/lab/dataworks/workflow/WorkflowController.java#approve  版本号已过 getWorkflow()/version()
+backend/src/main/java/com/lab/dataworks/workflow/WorkflowController.java#doPublishLocked  版本号已过 version()
+
+# ---------- 系统内部调用：没有 request 上下文，租户由调用方传入或本就不适用 ----------
+backend/src/main/java/com/lab/dataworks/integration/InternalAgentWriteController.java#mergeDatasource  需要 X-Internal-Token，内部接口
+backend/src/main/java/com/lab/dataworks/integration/InternalAgentWriteController.java#datasource  需要 X-Internal-Token，内部接口
+backend/src/main/java/com/lab/dataworks/lineage/InternalLineageController.java#runtime  需要 X-Internal-Token，内部接口
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#runInternal  调度/手动共用，任务已过 require(id)
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#busy  运行期状态轮询，任务 id 来自已校验的 require(id)
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#doRunScheduled  @Scheduled 内部触发，无请求上下文
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#backfill  回填入口已过 require(id)
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#runDetail  运行记录随任务，task_id 来自已校验的行
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#runLogs  运行记录随任务，id 先过 requireRun()
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#refreshStatus  Prefect 回调/轮询，任务 id 来自同步结果
+backend/src/main/java/com/lab/dataworks/integration/SyncTaskController.java#requireWithSecrets  先过 require(id)
+
+# ---------- 平台级表：没有租户维度，写操作已要求默认租户 ----------
+backend/src/main/java/com/lab/dataworks/project/DepartmentController.java#update  requirePlatform()：仅默认租户
+backend/src/main/java/com/lab/dataworks/project/DepartmentController.java#delete  requirePlatform()：仅默认租户
+backend/src/main/java/com/lab/dataworks/project/ProjectController.java#findDepartment  部门是平台级组织，create 时 requireConnection 校验项目租户
+
+# ---------- 补充复核（v448 第二轮） ----------
+backend/src/main/java/com/lab/dataworks/access/AccessController.java#cancel  先过 requestRow()，且只允许撤销 requester 本人
+backend/src/main/java/com/lab/dataworks/access/AccessController.java#revoke  先过 requestRow() 与 canApprove()
+backend/src/main/java/com/lab/dataworks/access/AccessController.java#requestRow  租户可见性在 Java 层按 requesterTenant/ownerTenant 判定（见方法体）
+backend/src/main/java/com/lab/dataworks/alert/AlertController.java#validate  项目已带 tenant_id 校验，工作流/质量规则再按 project_id 收口
+backend/src/main/java/com/lab/dataworks/alert/NotifyController.java#delete  先过 ownedChannel()
+backend/src/main/java/com/lab/dataworks/alert/NotifyController.java#toggle  先过 ownedChannel()
+backend/src/main/java/com/lab/dataworks/datasource/DataSourceController.java#recordTest  调用前已过 find()/test 路径，且只写自身测试状态
+backend/src/main/java/com/lab/dataworks/datasource/InternalDatasourceController.java#datasource  X-Internal-Token 内部接口（Prefect 取连接）
+backend/src/main/java/com/lab/dataworks/integration/InternalAgentMemoryController.java#identity  X-Internal-Token 内部接口
+backend/src/main/java/com/lab/dataworks/integration/InternalAgentMemoryController.java#canWriteProject  X-Internal-Token 内部接口
+backend/src/main/java/com/lab/dataworks/integration/InternalAgentWriteController.java#create  X-Internal-Token 内部接口
+backend/src/main/java/com/lab/dataworks/integration/InternalAgentWriteController.java#loadTask  X-Internal-Token 内部接口
+
+# ---------- v450 新增 ----------
+backend/src/main/java/com/lab/dataworks/ops/OpsController.java#cancel  先过 ownedInstance()（join workflow→project 校验租户）
+
+# ---------- v480 新增 ----------
+backend/src/main/java/com/lab/dataworks/access/AccessController.java#decisionRow  审批按 id 取原始行：F-P0-1 需要跨租户返回 403+审计，租户一致性在 decide() 中显式校验
+backend/src/main/java/com/lab/dataworks/ops/OpsController.java#doRerun  调用前已 ownedInstance(id) 校验（workflow→project 租户），锁内只重读状态

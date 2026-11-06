@@ -429,12 +429,12 @@ export default function MosModels() {
             rules={[{ required: true, message: '模型目录必填' }]}
             extra="登记即自动扫描体积/分片/张量/能力；下拉是训练产物与本机目录候选"
           >
-            <AutoComplete options={dirCands} placeholder="~/models/…" />
+            <AutoComplete options={dirCands} placeholder="models/…" />
           </Form.Item>
           <Form.Item name="base" label="基座（能力对账用）">
             <AutoComplete
               options={(sug.base_models || []).map((c) => ({ value: c.v, label: c.l }))}
-              placeholder="~/models/MiniCPM-o-4_5"
+              placeholder="models/MiniCPM-o-4_5"
             />
           </Form.Item>
           <Form.Item name="method" label="方法">

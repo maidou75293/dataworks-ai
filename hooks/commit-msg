@@ -1,0 +1,5 @@
+#!/bin/sh
+# commit-msg 闸随 clone 分发（REQ-OSS-CI2-1）：旧版只在各人 .git/hooks 里，外来贡献者无闸。
+# 启用：git config core.hooksPath hooks   （一次性）
+# 判定逻辑单源=scripts/ci/check-commit-msg.sh（CI 上同一份，本地/CI 不漂移）。
+exec bash "$(cd "$(dirname "$0")/.." && pwd)/scripts/ci/check-commit-msg.sh" "$1"

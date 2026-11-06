@@ -36,7 +36,7 @@ spec:
         app: activemq
     spec:
       nodeSelector:
-        kubernetes.io/hostname: dw-k8s-3
+        kubernetes.io/hostname: k8s-node-3
       containers:
         - name: activemq
           image: docker.io/apache/activemq-classic:5.18.3
