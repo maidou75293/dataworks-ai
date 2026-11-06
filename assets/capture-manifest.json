@@ -1,0 +1,53 @@
+{
+ "card": "REQ-OSS-README-DEMO-1",
+ "method": "live-render msedge headless 1440x900@2x",
+ "scripts": [
+  "scripts/ci/readme-shots/capture.py",
+  "scripts/ci/readme-shots/capture-compose.py",
+  "scripts/ci/readme-shots/capture-bi.py"
+ ],
+ "pages": [
+  {
+   "file": "login.png",
+   "env": "compose-demo(dwshots)",
+   "route": "/login",
+   "note": "匿名登录态"
+  },
+  {
+   "file": "home.png",
+   "env": "compose-demo(dwshots)",
+   "route": "/home",
+   "note": "主视图·待办/项目"
+  },
+  {
+   "file": "dev-editor.png",
+   "env": "compose-demo(dwshots)",
+   "route": "/dev/1",
+   "note": "数据开发 IDE 三栏(树/编辑器/结果)"
+  },
+  {
+   "file": "bi-dashboard.png",
+   "env": "compose-demo(dwshots)",
+   "route": "/bi 预览抽屉",
+   "note": "只读SQL出图(ECharts 7行/3行)"
+  },
+  {
+   "file": "integration.png",
+   "env": "k3s-cluster",
+   "route": "/integration",
+   "note": "数据集成任务列表(已裁行防内网DSN)"
+  },
+  {
+   "file": "scheduling.png",
+   "env": "k3s-cluster",
+   "route": "/ops/instances",
+   "note": "调度运行实例(成功/失败+原因)"
+  },
+  {
+   "file": "quality.png",
+   "env": "k3s-cluster",
+   "route": "/quality",
+   "note": "质量规则表"
+  }
+ ]
+}

@@ -1,79 +1,135 @@
-# DataWorks-AI（中文说明）
+# dataworks-ai
 
-**开源、可私有化部署的一站式数据平台** —— 对标 DataWorks 核心场景：数据集成、数据开发、调度运维、数据质量、数据服务与可视化 BI，并内置**对话式智能体（Agent 服务）**辅助数据开发。单机 `docker compose` 三分钟看界面，Ansible + k3s 上生产。
+<p align="center">
+  <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+  <a href="README.md"><img alt="语言" src="https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87%20%7C%20EN-blue.svg"></a>
+  <img alt="演示形态体量" src="https://img.shields.io/badge/%E6%BC%94%E7%A4%BA%E5%BD%A2%E6%80%81-1%20%E5%8F%B0%E6%9C%BA%E5%99%A8%20%C2%B7%206%20%E5%AE%B9%E5%99%A8-orange.svg">
+  <img alt="完整形态体量" src="https://img.shields.io/badge/%E5%AE%8C%E6%95%B4%E5%BD%A2%E6%80%81-3%20%E8%8A%82%E7%82%B9%20k3s%20%C2%B7%2028%20%E5%B7%A5%E4%BD%9C%E8%B4%9F-purple.svg">
+</p>
 
-[English README](README.md) · [Apache-2.0](LICENSE)
+> **一台机器、一条命令就能看见界面的自托管数据平台**——数据集成（批 + CDC）、数据开发、
+> 调度、数据质量、数据服务、可视化 BI、FlinkSQL 流开发，Spring Boot 后端 + React 前端。
+> **演示形态单机一键起，完整形态三节点一键铺。**两种形态都不藏前置条件。
 
-## 为什么做这个
+<p align="center">
+  <img src="assets/home.png" alt="dataworks-ai 主视图（演示形态）" width="960">
+</p>
 
-团队从"定时任务 + 脚本"长大之后，面对的选项通常只有两个：上云数据平台（数据与管道绑死一家厂商），或者自己拼装六件套（Airflow + dbt + DolphinScheduler + Superset + Ranger + …），然后被迫养一支 SRE。
+## 30 秒上手（演示形态 · 一条命令）
 
-DataWorks-AI 把这条工作流做成**一个产品**：数据源 → 集成 → 开发 IDE → 调度 → 质量 → 发布 API/BI → 治理审计 → 运维，上面再罩一层能查元数据、帮你写任务的**对话智能体**。默认私有化：凭据 AES-256-GCM 落盘加密、全程不出内网、整栈 Docker/K8s 可气隙部署。
-
-## 30 秒起环境
-
-唯一前提 **Docker**（compose v2.24+）。前后端都在容器里编译，本机不需要装 Java/Node。
-
-```bash
-git clone https://github.com/maidou75293/dataworks-ai.git
-cd dataworks-ai/deploy/compose
-bash up.sh
-```
-
-`up.sh` 会生成本机随机口令 → 构建镜像 → 起栈（web、backend、PostgreSQL、Keycloak SSO、SeaweedFS 对象存储、Apache Doris）→ 等健康检查 → 打印**一次性 admin 口令**。浏览器打开 `http://localhost:30090`。停止用 `bash down.sh`。
-
-> 首次构建要拉 Maven/npm 依赖，约 10~20 分钟；之后有缓存，秒级启动。
-> 直接 `docker compose up` 也能起，但走的是公开的 `demo-*` 兜底口令——**只许本机看界面，端口绝不能暴露到公网/共享网络**。
-
-## 功能盘点
-
-| 域 | 能力 |
-|---|---|
-| **数据集成** | 批量同步任务、异构数据源接入；演示栈自动创建 Doris/PG 业务账号 |
-| **数据开发** | SQL IDE（Flyway 元数据迁移）、工作流 DAG 编辑器、函数/UDF 管理、流开发（Flink on K8s） |
-| **调度运维** | DAG 调度（Prefect 内核）、运行实例、任务基线、告警中心（邮件/webhook，通道密钥加密存储）、运维总览 |
-| **质量与治理** | 质量规则、SQL 变更审批流（强制备份计划）、权限申请流、安全中心、元数据目录、血缘、元数据巡检 |
-| **数据服务与 BI** | 数据集发布成 API、内置可视化、多租户工作空间 |
-| **多模态与模型（MOS）** | 标注项目、训练集、训练任务、模型评测、模型资产、数据飞轮——给 AI 训练数据用的一条小型 MLOps 泳道 |
-| **智能体服务** | 接任意 OpenAI 兼容大模型；对话式数据开发；系统配置页改参数**免重启**即时生效；密钥界面只显示尾 4 位指纹 |
-| **安全** | Keycloak SSO + 本地账号、会话管理、密钥统一走 AES-256-GCM（主密钥 `PLATFORM_SECRET_KEY` 缺失则后端拒绝启动）、密钥访问有审计 |
-
-架构速览：`React SPA (nginx) → Spring Boot API（34 个模块）→ PostgreSQL 元数据 / Doris 数仓 / SeaweedFS S3`，可选 `→ Python agent-service → 你自选的大模型`。K8s 生产形态为模板化清单（`deploy/k8s/`）+ Ansible inventory 驱动。
-
-## 目录结构
-
-| 路径 | 内容 |
-|---|---|
-| `backend/` | Spring Boot 主服务，Flyway 迁移在 `src/main/resources/db/migration` |
-| `web/` | React + TypeScript 前端 |
-| `agent-service/` | Python 智能体服务（环境变量驱动，热配置） |
-| `deploy/compose/` | 单机演示栈（`up.sh` / `down.sh`） |
-| `deploy/` | 生产路径：Ansible playbook + k3s/K8s 模板，全部值为 `*.example.*` 模板 |
-| `mos/` | 多模态资产 / 标注子系统 |
-| `services/` `prompt-graph/` `e2e/` | 周边服务、提示词资产、端到端验收框架 |
-
-## 配置约定
-
-所有可调项遵循"**用户可改、必有默认值**"：每个组件带 `.env.example`，留空即用安全本地兜底；真实口令只放 gitignore 的 `.env` / `keys/` / `secrets/`，界面永不回显明文。生产部署的主机相关值从你自己的 `env.local.sh` 解析（模板 `deploy/env.local.sh.example`）——仓库内按设计**零内网 IP**。
-
-## 诚实的局限
-
-- compose 演示栈是**单机评估形态**；生产调度/流处理能力走 K8s 路径。
-- MOS/模型训练泳道假定你有自己的 GPU 集群——平台做编排，不做训练本身。
-- 智能体效果取决于你接的大模型，仓库不附带任何模型权重。
-- 本仓 2026-11-05 首发，文档毛边可能先于代码 bug——带复现步骤的 issue 是最快的修复路径。
-
-## 开发
+敲之前必须满足：Docker ≥ 24 + compose v2.24+；内存整机 ≥ 12 GB（8 GB 能跑但紧）；
+磁盘留 ≥ 30 GB。本机不用装 Java/Node——都在容器里编译。
 
 ```bash
-# 后端（容器内编译，或本机 JDK 21 + Maven）
-cd backend && ./mvnw spring-boot:run
-# 前端
-cd web && npm ci && npm run dev
+git clone <本仓地址> && cd <本仓>/deploy/compose
+bash up.sh        # 首次：拉 6~8 GB 镜像 + 容器内编译，约 10~20 分钟
 ```
 
-`.github/workflows/` 的 CI 门在每个 PR 上运行。
+构建结束会打印**一次性 `admin` 口令——立刻复制**；浏览器打开
+**http://localhost:30090**，用 `admin` + 该口令登录，看到的就是上面那张主视图。
+命令行验证：
 
-## 许可
+```bash
+curl -s http://localhost:30090/api/health   # {"status":"UP","db":"UP","schemaVersion":"..."}
+```
 
-Apache License 2.0 —— 见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
+要调度 / CDC / Flink / 数据地图？它们在完整形态里，见下方「先按机器选形态」。
+停止演示：`bash down.sh`。
+
+## 关键数字
+
+| 项目 | 数字 |
+|---|---|
+| 许可证 | MIT（OSI 认可，全文见 [LICENSE](LICENSE)） |
+| 演示部署 | 1 条命令 / 6 容器 / 首次构建 10-20 分钟 / **1 台机器** |
+| 完整平台 | **1 个 k3s 集群（3 节点）** / 集群内 28 个工作负载 / Ansible 离线包引导 |
+| 后端 | 500+ REST 接口，Java 17 + Spring Boot |
+| 前端 | React + Vite 单页应用（批开发 / 流开发 / 运维看板） |
+| 测试面 | `scripts/e2e/` 240+ 端到端审计脚本 |
+| 治理 | 权限点 × 可配角色 RBAC、多租户隔离、L1-L4 分级 + 列级脱敏 |
+| 引擎 | Doris 数仓、SeaTunnel 集成、Flink 1.20 SQL 流、Prefect 3 调度、Kafka、Spark、Keycloak SSO |
+
+## 系统截图
+
+全部为真实运行界面直出，无摆拍无素材图；每张图注标出来自哪种形态。
+抓取方式可复现：[`scripts/ci/readme-shots/`](scripts/ci/readme-shots)
+（Playwright 直连活环境逐页渲染截图，机器可读台账在 `assets/capture-manifest.json`）。
+
+### 登录页 —— 首次启动即接好 Keycloak SSO（演示形态）
+
+![登录页](assets/login.png)
+
+### 主视图 —— 项目、待办、模块入口（演示形态）
+
+![主视图](assets/home.png)
+
+### 数据开发 —— 项目树 / 编辑器 / 结果三栏（演示形态）
+
+![数据开发编辑器](assets/dev-editor.png)
+
+### 可视化 BI —— 只读 SQL 经 DEV 冒烟后出 ECharts 图（演示形态）
+
+![BI 看板抽屉](assets/bi-dashboard.png)
+
+### 数据集成 —— SeaTunnel 批 + CDC 任务列表（完整形态）
+
+![数据集成任务](assets/integration.png)
+
+### 调度 —— Prefect 运行实例，成败与原因可见（完整形态）
+
+![运行实例](assets/scheduling.png)
+
+### 数据质量 —— 规则表挂资产，带告警（完整形态）
+
+![质量规则](assets/quality.png)
+
+## 先按手上的机器选形态
+
+第一个问题先直答：**一台 8G 服务器跑不了全套**——完整形态要 3 台节点、每台内存硬闸
+≥ 7 GB（preflight 不够直接停）；8G 单机能跑的是**演示形态**，属于「能跑但紧」。
+
+| 形态 | 实际得到什么 | 机器与资源（全是硬数字） | 怎么上去 |
+|---|---|---|---|
+| **A. 演示**（Docker Compose） | 登录 + 界面 + SQL 开发 + 数据服务 + BI；调度/CDC/Flink/数据地图没有，界面上会明说 | **1 台机器**；软件只要 Docker≥24 + compose v2.24+。六件套稳态实测 ≈2.8 GiB，首次构建峰值高数 GB——建议 ≥12 GB；磁盘留 ≥30 GB | 上方「30 秒上手」 |
+| **B. 完整平台**（k3s · Ansible 离线包） | 全部能力：Prefect 调度、SeaTunnel 批+CDC、FlinkSQL、Gravitino 数据地图、Kafka、Spark、监控、助手/RAG | **3 节点 + 1 台 Linux 控制机**；节点硬闸 ≥7 GB，规划 6vCPU/12 GB/≥40 GB 盘 每台 | 清单 + 一条命令（下） |
+| **C. 接管已有 K8s** | 同 B 的工作负载，不装节点 | 你的集群 + kubeconfig + 一个 StorageClass | `deploy.sh existing` |
+
+形态 B 一条命令的诚实含义：**敲一条命令，跑几十分钟**——
+
+```bash
+cd deploy && bash deploy.sh install
+# preflight → 节点基线 → k3s → 私有仓库 :30500 → 灌镜像 → 按序铺 28 个工作负载 → 验收
+```
+
+「那么多服务怎么一键」——因为**从来只有一个集群**：28 个工作负载全在这一个 k3s 里；
+逐参数全文见 [deploy/README.md](deploy/README.md)，模块级文档在 [docs/](docs/)。
+
+## 能力分区
+
+- **数据集成**：SeaTunnel 批 + CDC，水位、失败原因、停止控制都在界面上；MySQL ≥ 8.4
+  在创建任务时被本平台自身的版本探测拦下（400），这是平台校验，不是数据库通用行为。
+- **数据开发**：项目级 SQL IDE + 树导航 + 版本与发布/下线生命周期；UDF 注册表把 jar
+  同时下发 Doris 全局函数与 Flink 会话集群。
+- **调度**：Prefect 3 DAG：定时、重跑、按上游选择补数；flow 文件自动同步集群。
+- **质量与治理**：质量规则 + 告警、L1-L4 分级、列级脱敏查询网关（OFF/LOG/ENFORCE）、
+  权限点 RBAC、by-id 接口租户隔离守卫。
+- **数据服务**：SQL 发布成 REST API，Token 轮换、冒烟测试、开发/生产分离
+  （发布快照冻结，试运行必须通过才能发布）。
+- **BI 与助手**：参数化只读 SQL 出 ECharts 看板；内置中台助手带项目记忆与文档 RAG。
+- **流开发**：Flink SQL 走会话集群 + SQL Gateway，作业状态实时在 `/stream`。
+
+## 坑点（先说清再上手）
+
+- SeaTunnel 连接器放节点 hostPath `/tmp/seatunnel-connectors`，系统清理 `/tmp` 会让
+  新作业静默失败——处理见 [deploy/README.md](deploy/README.md)。
+- 演示形态自带**本机默认凭据**，任何共享部署前先轮换；`.invalid` 端点保持原样，
+  缺件请求不会打进任何人内网。
+- 已知未修（如实）：演示形态里迁移内置的 Doris 数据源行带着集群内部 DNS 名，
+  数据查询/BI 默认走到不可达主机——新建一个指向本机 `doris` 服务的自定义 Doris
+  数据源即可（上方 BI 图就是这么截的）。修复排期内置数据迁移源头，不用文档糊弄。
+- 单机端口在 compose/k3s 清单里钉死（Doris FE/BE、NodePort 30090），同机混部先改映射。
+- 工作名 "dataworks" 与某云厂商注册产品重名，改名待上游统一决定，本快照按现名分发。
+
+## 许可证
+
+[MIT](LICENSE)。MIT 无 NOTICE 义务，本包不分发 NOTICE；第三方依赖各随其证。
